@@ -183,7 +183,7 @@ class PrismCore:
 
         try:
             # set some general variables
-            self.version = "v1.3.0.81"
+            self.version = "v1.3.0.82"
             self.requiredLibraries = "v1.3.0.0"
             self.core = self
 
@@ -438,6 +438,10 @@ class PrismCore:
 
         autoSave = self.getConfig("globals", "autosave")
         if autoSave is None or not autoSave:
+            return
+
+        isGuiThread = QApplication.instance().thread() == QThread.currentThread()
+        if "silent" in self.prismArgs or not self.uiAvailable or not isGuiThread:
             return
 
         self.asThread = QThread()
