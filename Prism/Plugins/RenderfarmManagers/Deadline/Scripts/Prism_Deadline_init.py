@@ -11,7 +11,7 @@
 ####################################################
 #
 #
-# Copyright (C) 2016-2019 Richard Frangenberg
+# Copyright (C) 2016-2020 Richard Frangenberg
 #
 # Licensed under GNU GPL-3.0-or-later
 #
@@ -31,11 +31,11 @@
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
 
-
 from Prism_Deadline_Variables import Prism_Deadline_Variables
 from Prism_Deadline_Functions import Prism_Deadline_Functions
 
+
 class Prism_Deadline(Prism_Deadline_Variables, Prism_Deadline_Functions):
-	def __init__(self, core):
-		Prism_Deadline_Variables.__init__(self, core, self)
-		Prism_Deadline_Functions.__init__(self, core, self)
+    def __init__(self, core):
+        Prism_Deadline_Variables.__init__(self, core, self)
+        Prism_Deadline_Functions.__init__(self, core, self)

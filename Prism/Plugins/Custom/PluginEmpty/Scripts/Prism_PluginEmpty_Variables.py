@@ -11,7 +11,7 @@
 ####################################################
 #
 #
-# Copyright (C) 2016-2019 Richard Frangenberg
+# Copyright (C) 2016-2020 Richard Frangenberg
 #
 # Licensed under GNU GPL-3.0-or-later
 #
@@ -31,10 +31,9 @@
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
 
-
 class Prism_PluginEmpty_Variables(object):
-	def __init__(self, core, plugin):
-		self.version = "v1.2.1.0"
-		self.pluginName = "PluginEmpty"
-		self.pluginType = "Custom"
-		self.platforms = ["Windows", "Linux", "Darwin"]
+    def __init__(self, core, plugin):
+        self.version = "v1.3.0.0"
+        self.pluginName = "PluginEmpty"
+        self.pluginType = "Custom"
+        self.platforms = ["Windows", "Linux", "Darwin"]

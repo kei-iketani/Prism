@@ -11,7 +11,7 @@
 ####################################################
 #
 #
-# Copyright (C) 2016-2019 Richard Frangenberg
+# Copyright (C) 2016-2020 Richard Frangenberg
 #
 # Licensed under GNU GPL-3.0-or-later
 #
@@ -31,17 +31,16 @@
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
 
-
 class Prism_Nuke_Variables(object):
-	def __init__(self, core, plugin):
-		self.version = "v1.2.1.23"
-		self.pluginName = "Nuke"
-		self.pluginType = "App"
-		self.appShortName = "Nuke"
-		self.appType = "2d"
-		self.hasQtParent = True
-		self.sceneFormats = [".nk", ".nknc", ".nkple", ".nuke"]
-		self.appSpecificFormats = self.sceneFormats
-		self.appColor = [160,52,66]
-		self.appVersionPresets = ["11.0v1", "10.5v2"]
-		self.platforms = ["Windows", "Linux", "Darwin"]
+    def __init__(self, core, plugin):
+        self.version = "v1.3.0.0"
+        self.pluginName = "Nuke"
+        self.pluginType = "App"
+        self.appShortName = "Nuke"
+        self.appType = "2d"
+        self.hasQtParent = True
+        self.sceneFormats = [".nk", ".nknc", ".nkple", ".nuke", ".nkind"]
+        self.appSpecificFormats = self.sceneFormats
+        self.appColor = [160, 52, 66]
+        self.appVersionPresets = ["11.0v1", "10.5v2"]
+        self.platforms = ["Windows", "Linux", "Darwin"]

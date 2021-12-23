@@ -1,10 +1,19 @@
-import os, sys, platform
-def prismInit(prismArgs=[]):
-	Dir = os.path.join(PRISMROOT, "Scripts")
+import os
+import sys
 
-	if Dir not in sys.path:
-		sys.path.append(Dir)
-		
-	import PrismCore
-	pcore = PrismCore.PrismCore(app="Maya", prismArgs=prismArgs)
-	return pcore
+
+def prismInit(prismArgs=[]):
+    prismRoot = os.getenv("PRISM_ROOT")
+    if not prismRoot:
+        prismRoot = PRISMROOT
+
+    scriptDir = os.path.join(prismRoot, "Scripts")
+
+    if scriptDir not in sys.path:
+        sys.path.append(scriptDir)
+
+    import PrismCore
+
+    global pcore
+    pcore = PrismCore.PrismCore(app="Maya", prismArgs=prismArgs)
+    return pcore

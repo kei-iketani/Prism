@@ -11,7 +11,7 @@
 ####################################################
 #
 #
-# Copyright (C) 2016-2019 Richard Frangenberg
+# Copyright (C) 2016-2020 Richard Frangenberg
 #
 # Licensed under GNU GPL-3.0-or-later
 #
@@ -31,194 +31,208 @@
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
 
+import os
+import sys
 
 try:
-	from PySide2.QtCore import *
-	from PySide2.QtGui import *
-	from PySide2.QtWidgets import *
-	psVersion = 2
+    from PySide2.QtCore import *
+    from PySide2.QtGui import *
+    from PySide2.QtWidgets import *
+
+    psVersion = 2
 except:
-	from PySide.QtCore import *
-	from PySide.QtGui import *
-	psVersion = 1
+    from PySide.QtCore import *
+    from PySide.QtGui import *
+
+    psVersion = 1
 
 if psVersion == 1:
-	from UserInterfacesPrism import SetProject_ui
+    from UserInterfacesPrism import SetProject_ui
 else:
-	from UserInterfacesPrism import SetProject_ui_ps2 as SetProject_ui
-
-import os, sys, traceback, time
-from functools import wraps
+    from UserInterfacesPrism import SetProject_ui_ps2 as SetProject_ui
 
 if sys.version[0] == "3":
-	pVersion = 3
+    pVersion = 3
 else:
-	pVersion = 2
+    pVersion = 2
+
+from PrismUtils.Decorators import err_catcher
 
 
 class SetProject(QDialog):
-	def __init__(self, core, openUi=""):
-		QDialog.__init__(self)
-		self.core = core
-		self.core.parentWindow(self)
-		self.setWindowTitle("Set Project")
+    def __init__(self, core, openUi=""):
+        QDialog.__init__(self)
+        self.core = core
+        self.core.parentWindow(self)
+        self.setWindowTitle("Set Project")
 
-		self.openUi = openUi
+        self.openUi = openUi
 
-		self.projectsUi = SetProjectImp()
-		self.projectsUi.setup(self.core, self, openUi)
+        self.projectsUi = SetProjectClass(self.core, self, openUi)
 
-		grid = QGridLayout()
-		grid.addWidget(self.projectsUi)
+        grid = QGridLayout()
+        grid.addWidget(self.projectsUi)
 
-		self.setLayout(grid)
-		self.resize(self.width(), self.minimumSizeHint().height())
-		self.setFocus()
+        self.setLayout(grid)
+        self.resize(self.projectsUi.width(), self.projectsUi.height())
+        self.setFocus()
 
-
-
-class SetProjectClass(object):
-	def setup(self, core, pdialog, openUi=""):
-		self.core = core
-		self.pdialog = pdialog
-		self.openUi = openUi
-
-		self.refreshUi()
-		self.connectEvents()
-
-		self.core.appPlugin.setProject_loading(self)
-		self.resize(self.width(), self.minimumSizeHint().height())
-
-
-	def err_decorator(func):
-		@wraps(func)
-		def func_wrapper(*args, **kwargs):
-			try:
-				return func(*args, **kwargs)
-			except Exception as e:
-				exc_type, exc_obj, exc_tb = sys.exc_info()
-				erStr = ("%s ERROR - SetProject %s:\n%s\n\n%s" % (time.strftime("%d/%m/%y %X"), args[0].core.version, ''.join(traceback.format_stack()), traceback.format_exc()))
-				args[0].core.writeErrorLog(erStr)
-
-		return func_wrapper
+    @err_catcher(name=__name__)
+    def showEvent(self, event):
+        super(SetProject, self).showEvent(event)
+        if self.projectsUi.gb_recent.isVisible():
+            recentEmptySpace = self.projectsUi.spacer_recent.geometry().height()
+            if recentEmptySpace > 0:
+                height = self.height() - recentEmptySpace
+                self.resize(self.width(), height)
+                self.move(self.pos().x(), self.pos().y() + recentEmptySpace/2)
+        else:
+            newHeight = self.minimumSizeHint().height()
+            difference = self.height() - newHeight
+            self.resize(self.width(), newHeight)
+            self.move(self.pos().x(), self.pos().y() + difference/2)
 
 
-	@err_decorator
-	def connectEvents(self):
-		self.b_open.clicked.connect(self.core.openProject)
-		self.b_create.clicked.connect(self.preCreate)
-		self.chb_startup.stateChanged.connect(self.startupChanged)
-		
+class SetProjectClass(QDialog, SetProject_ui.Ui_dlg_setProject):
+    def __init__(self, core, pdialog, openUi=""):
+        QDialog.__init__(self)
+        self.setupUi(self)
 
-	@err_decorator
-	def enterEvent(self, event):
-		QApplication.restoreOverrideCursor()
+        self.core = core
+        self.pdialog = pdialog
+        self.openUi = openUi
 
+        self.refreshUi()
+        self.connectEvents()
 
-	@err_decorator
-	def preCreate(self):
-		self.core.createProject()
-		self.pdialog.close()
-		if hasattr(self.core, "pb") and self.core.pb.isVisible():
-			self.core.pb.close()
+        getattr(self.core.appPlugin, "setProject_loading", lambda x: None)(self)
+        self.core.callback(
+            name="onSetProjectStartup", types=["prjManagers", "custom"], args=[self]
+        )
 
+    @err_catcher(name=__name__)
+    def connectEvents(self):
+        self.b_open.clicked.connect(self.core.projects.openProject)
+        self.b_create.clicked.connect(self.preCreate)
+        self.chb_startup.stateChanged.connect(self.startupChanged)
 
-	@err_decorator
-	def refreshUi(self):
-		if hasattr(self.core, "projectName") and self.core.projectName is not None:
-			self.l_project.setText("Current Project:\n\n" + (self.core.projectName + "          " + self.core.projectPath))
-		else:
-			self.l_project.setText("No current project")
+    @err_catcher(name=__name__)
+    def enterEvent(self, event):
+        try:
+            QApplication.restoreOverrideCursor()
+        except:
+            pass
 
-		rprojects = self.core.getConfig(cat="recent_projects", getOptions=True)
-		if rprojects is None:
-			rprojects = []
+    @err_catcher(name=__name__)
+    def preCreate(self):
+        self.core.projects.createProjectDialog()
+        self.pdialog.close()
+        if getattr(self.core, "pb", None) and self.core.pb.isVisible():
+            self.core.pb.close()
 
-		cData = {}
-		for i in rprojects:
-			cData[i] = ["recent_projects", i]
+    @err_catcher(name=__name__)
+    def refreshUi(self):
+        if hasattr(self.core, "projectName") and self.core.projectName is not None:
+            self.l_project.setText(
+                "Current Project:\n\n"
+                + (self.core.projectName + "          " + self.core.projectPath)
+            )
+        else:
+            self.l_project.setText("No current project")
 
-		rPrjPaths = self.core.getConfig(data=cData)
+        self.gb_recent.setStyleSheet("""
+            QWidget#project {
+                background-color: rgba(255, 255, 255, 20);
+            }
+            QWidget#pchild {
+                background-color: rgba(0, 0, 0, 0);
+            }
+            QScrollArea {
+                border: 0px;
+            }
+        """)
 
-		for prj in rPrjPaths:
-			if rPrjPaths[prj] == "" or rPrjPaths[prj] == self.core.prismIni:
-				continue
+        recentProjects = self.core.projects.getRecentProjects()
+        for project in recentProjects:
+            prjPath = project["configPath"]
+            rpName = project["name"]
 
-			rpName = self.core.getConfig(cat="globals", param="project_name", configPath=rPrjPaths[prj])
+            prjPath = os.path.abspath(
+                os.path.join(prjPath, os.pardir, os.pardir)
+            )
+            if not prjPath.endswith(os.sep):
+                prjPath += os.sep
 
-			if rpName is None:
-				continue
+            pWidget = QWidget()
+            pWidget.setAttribute(Qt.WA_StyledBackground, True)
+            wLayout = QHBoxLayout()
+            wLayout.setContentsMargins(9, 4, 9, 4)
+            l_recentName = QLabel(rpName)
+            l_recentName.setMinimumWidth(200 * self.core.uiScaleFactor)
+            l_recentName.setSizePolicy(QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
+            l_recentName.setStyleSheet("padding: 0 30 0 30;")
+            l_recentPath = QLabel(prjPath)
+            l_recentPath.setWordWrap(True)
+            l_recentPath.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred))
+            l_recentPath.setToolTip(prjPath)
+            b_setActive = QPushButton("Set active")
+            b_setActive.setMinimumWidth(100 * self.core.uiScaleFactor)
+            b_setActive.setMaximumWidth(100 * self.core.uiScaleFactor)
+            b_setActive.setContextMenuPolicy(Qt.CustomContextMenu)
+            wLayout.addWidget(b_setActive)
+            wLayout.addWidget(l_recentName)
+            wLayout.addWidget(l_recentPath)
+        #    wLayout.addStretch()
+            pWidget.setLayout(wLayout)
+            l_recentName.setObjectName("pchild")
+            l_recentPath.setObjectName("pchild")
+            pWidget.setObjectName("project")
 
-			prjPath = os.path.abspath(os.path.join(rPrjPaths[prj], os.pardir, os.pardir))
-			if not prjPath.endswith(os.sep):
-				prjPath += os.sep
+            self.scl_recent.addWidget(pWidget)
 
-			pWidget = QWidget()
-			wLayout = QHBoxLayout()
-			wLayout.setContentsMargins(0,0,0,0)
-			l_recentName = QLabel(rpName)
-			l_recentName.setMaximumWidth(100)
-			l_recentPath = QLabel(prjPath)
-			b_setActive = QPushButton("Set active")
-			b_setActive.setMaximumWidth(100)
-			b_setActive.setContextMenuPolicy(Qt.CustomContextMenu)
-			wLayout.addWidget(l_recentName)
-			wLayout.addWidget(l_recentPath)
-			wLayout.addWidget(b_setActive)
-			pWidget.setLayout(wLayout)
+            b_setActive.clicked.connect(
+                lambda y=None, x=prjPath: self.core.changeProject(x, self.openUi)
+            )
+            b_setActive.customContextMenuRequested.connect(
+                lambda x, y=l_recentPath: self.rclRecent(y)
+            )
 
-			self.scl_recent.addWidget(pWidget)
+        if self.scl_recent.count() == 0:
+            self.gb_recent.setVisible(False)
+        else:
+            self.spacer_recent = QSpacerItem(0, 0, QSizePolicy.Minimum, QSizePolicy.Expanding)
+            self.scl_recent.addSpacerItem(self.spacer_recent)
 
-			b_setActive.clicked.connect(lambda y=None, x=rPrjPaths[prj]: self.core.changeProject(x, self.openUi))
-			b_setActive.customContextMenuRequested.connect(lambda x,y=l_recentPath: self.rclRecent(y))
+        ssu = self.core.getConfig("globals", "showonstartup")
+        if ssu is None:
+            ssu = True
 
-		if self.scl_recent.count() == 0:
-			self.gb_recent.setVisible(False)
-		else:
-			spacer = QSpacerItem(0, 0, QSizePolicy.Minimum, QSizePolicy.Expanding)
-			self.scl_recent.addSpacerItem(spacer)
+        self.chb_startup.setChecked(ssu)
 
-		ssu = self.core.getConfig("globals", "ShowOnStartup", ptype="bool")
-		if ssu is None:
-			ssu = True
+    @err_catcher(name=__name__)
+    def rclRecent(self, rProject):
+        rcmenu = QMenu(self)
 
-		self.chb_startup.setChecked(ssu)
+        delAct = QAction("Delete from recent", self)
+        delAct.triggered.connect(lambda: self.deleteRecent(rProject))
+        rcmenu.addAction(delAct)
 
+        rcmenu.exec_(QCursor.pos())
 
-	@err_decorator
-	def rclRecent(self, rProject):
-		rcmenu = QMenu()
+    @err_catcher(name=__name__)
+    def deleteRecent(self, rProject):
+        self.core.projects.setRecentPrj(
+            os.path.join(rProject.text(), "00_Pipeline", "pipeline.yml"),
+            action="remove",
+        )
+        rProject.parent().setVisible(False)
 
-		delAct = QAction("Delete from recent", self)
-		delAct.triggered.connect(lambda: self.deleteRecent(rProject))
-		rcmenu.addAction(delAct)
+        if self.scl_recent.count() == 0:
+            self.gb_recent.setVisible(False)
 
-		self.core.appPlugin.setRCStyle(self, rcmenu)
-
-		rcmenu.exec_(QCursor.pos())
-
-
-	@err_decorator
-	def deleteRecent(self, rProject):
-		self.core.setRecentPrj(os.path.join(rProject.text(), "00_Pipeline", "pipeline.ini"), action="remove")
-		rProject.parent().setVisible(False)
-
-		if self.scl_recent.count() == 0:
-			self.gb_recent.setVisible(False)
-
-		self.resize(self.width(), self.minimumSizeHint().height())
-
-
-	@err_decorator
-	def startupChanged(self, state):
-		if state == 0:
-			self.core.setConfig("globals", "ShowOnStartup", str(False))
-		elif state == 2:
-			self.core.setConfig("globals", "ShowOnStartup", str(True))
-
-
-
-class SetProjectImp(QDialog, SetProject_ui.Ui_dlg_setProject, SetProjectClass):
-	def __init__(self):
-		QDialog.__init__(self)
-		self.setupUi(self)
+    @err_catcher(name=__name__)
+    def startupChanged(self, state):
+        if state == 0:
+            self.core.setConfig("globals", "showonstartup", False)
+        elif state == 2:
+            self.core.setConfig("globals", "showonstartup", True)

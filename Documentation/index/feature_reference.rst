@@ -25,14 +25,6 @@ Follow the installer instructions:
 
 After the files are extracted, an additional :ref:`installation dialog<dlgInstallation>` opens.
 
-Prism requires Microsoft Visual C++ 2010 Redistributable and Microsoft Visual C++ 2013 Redistributable. These are already installed on most computers, but if you see an error related to MSVCR1.dll or MSVCR120.dll then you need to install these manually.
-
-You can download the installer from the microsoft website:
-
-`Microsoft Visual C++ 2010 Redistributable <https://www.microsoft.com/en-us/download/details.aspx?id=26999>`_
-
-`Microsoft Visual C++ 2013 Redistributable <https://support.microsoft.com/en-us/help/3179560/update-for-visual-c-2013-and-visual-c-redistributable-package>`_
-
 Prism will be installed into this location by default, but you can change the location during the installation:
 
 C:/Prism/*
@@ -165,11 +157,15 @@ In some programs (like Houdini) the Prism shelf needs to be deleted manually. Yo
 Updating Prism
 --------------------------------
 
-Unless not otherwise stated in the installation setup, you can update Prism simply by installing another version of Prism. It's not necessary to uninstall the previous version.
+You can update Prism simply by installing another version of Prism. It's not necessary to uninstall the previous version.
 
 The installer which you can find on the downloads page of the Prism website is the latest stable release. If you want to use the latest feature additions and bugfixes you can update your Prism version to the latest "development" version, which is available in the official Prism GitHub repository.
 
-To update your current Prism version to the latest development version, open the Prism Settings dialog, for example from the Windows startmenu or the Prism Tray. In the "Miscellaneous" tab you can find an "Update Prism" button. After you click this button you can select "Update from GitHub", which will download and install the latest Prism development version.
+To update your current Prism version to the latest development version, open the Prism Settings dialog, for example from the Windows startmenu or the Prism Tray. In the "General" tab you can find a "Update" section with an "Check now" button. Click this button to check if there is a newer version available an if so follow the instructions to update your Prism version.
+
+.. image:: images/update.png
+
+You can install a Prism version from a zip file (like the one which you can download manually from GitHub), by rickclicking on the "Check now" button and selecting "Update from .zip".
 
 If you encounter problems during the update process, try to update from the standalone Prism Settings dialog and not from inside any DCC app.
 
@@ -371,6 +367,7 @@ The upper half of the Project Browser contains three tabs:
 **Assets:**
 
 This tab lets you organize your scenefiles for assets like characters or environment, which will be used in shots later. You can create new entities in the "Hierarchy" list by double-clicking on it or from the context menu. You can create folders to group your assets or sub-folders. For example, you could create a group "Character", which contains a folder "Creature", which contains the assets "Alien-A" and "Alien-B". Assets or bold, while folder are in regular type. When you have selected an asset in the hierarchy, you can create pipeline steps in the "Steps" list by double-click or from the context menu. The "Select Steps" dialog shows up and lets you select one or more steps, which will be created. You can also create new pipeline steps in this dialog. To remove existing steps, you have to edit this file in your project directory: *00_Pipeline/pipeline.ini*
+With the default project configuration underscores are not allowed in assetnames and stepnames. You cannot enter underscores in the name field when creating them in the Prism UI. If you have to use underscores you can change the setting "filenameseparator" in the project config to any different character. That character won't be allowed then in assetnames.
 
 When you have a step selected, you can create new scenefiles in the files list from the various options in the context menu. The color on the left side of the version determines the file type. Every DCC app has a different color. For example, orange means it is a Houdini scene. To open a scenefile double click on it.
 

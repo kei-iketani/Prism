@@ -11,7 +11,7 @@
 ####################################################
 #
 #
-# Copyright (C) 2016-2019 Richard Frangenberg
+# Copyright (C) 2016-2020 Richard Frangenberg
 #
 # Licensed under GNU GPL-3.0-or-later
 #
@@ -31,35 +31,55 @@
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
 
+import os
+import sys
 
-import os, sys, platform
-
-prismRoot = PRISMROOT
+prismRoot = os.getenv("PRISM_ROOT")
+if not prismRoot:
+    prismRoot = PRISMROOT
 
 sys.path.append(os.path.join(prismRoot, "Scripts"))
-sys.path.append(os.path.join(prismRoot, "PythonLibs", "Python27", "PySide"))
+
+if sys.version[0] == "2":
+    sys.path.append(os.path.join(prismRoot, "PythonLibs", "Python27"))
+    sys.path.append(os.path.join(prismRoot, "PythonLibs", "Python27", "PySide"))
+else:
+    sys.path.append(os.path.join(prismRoot, "PythonLibs", "Python37"))
+    sys.path.append(os.path.join(prismRoot, "PythonLibs", "Python37", "PySide"))
+
+# Fix for imageio to work
+sys.path.insert(0, os.path.join(prismRoot, "PythonLibs/CrossPlatform"))
+import imageio  # nopep8
 
 try:
-	from PySide2.QtCore import *
-	from PySide2.QtGui import *
-	from PySide2.QtWidgets import *
+    from PySide2.QtCore import *
+    from PySide2.QtGui import *
+    from PySide2.QtWidgets import *
 except:
-	from PySide.QtCore import *
-	from PySide.QtGui import *
+    from PySide.QtCore import *
+    from PySide.QtGui import *
 
 qapp = QApplication.instance()
 if qapp == None:
-  qapp = QApplication(sys.argv)
+    qapp = QApplication(sys.argv)
 
+import PrismCore  # nopep8
 
-import PrismCore
 pcore = PrismCore.PrismCore(app="Fusion")
 pcore.appPlugin.fusion = fusion
 
-curPrj = pcore.getConfig("globals", "current project")
-if curPrj is not None and curPrj != "":
-	pcore.changeProject(curPrj, openUi="projectBrowser")
-else:
-	pcore.setProject(openUi="projectBrowser")
+doOpen = True
+try:
+    if scriptlib is True and pcore.getConfig("fusion", "openprism") is False:
+        doOpen = False
+except:
+    pass
 
-qapp.exec_()
+if doOpen:
+    curPrj = pcore.getConfig("globals", "current project")
+    if curPrj is not None and curPrj != "":
+        pcore.changeProject(curPrj, openUi="projectBrowser")
+    else:
+        pcore.projects.setProject(openUi="projectBrowser")
+
+    qapp.exec_()

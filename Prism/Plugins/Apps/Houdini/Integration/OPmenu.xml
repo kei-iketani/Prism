@@ -55,7 +55,9 @@ if node:
     previewImg = ScreenShot.grabScreenArea(PrismInit.pcore)
 
     if previewImg:
-        prvPath = os.path.dirname(hou.hipFile.path()) + '/network_previews/%s_%s.jpg' % (node.name(), int(time.time()))
+        hip = os.path.dirname(hou.hipFile.path())
+        prvPath = hip + '/network_previews/%s_%s.jpg' % (node.name(), int(time.time()))
+        relPath = prvPath.replace(hip, "$HIP")
         if not os.path.exists(os.path.dirname(prvPath)):
             os.makedirs(os.path.dirname(prvPath))
             
@@ -75,8 +77,7 @@ if node:
         startY = -0.4
 
         rect = hou.BoundingRect(startX, startY, startX+width, startY-height)
-
-        img = hou.NetworkImage(prvPath, rect)
+        img = hou.NetworkImage(relPath, rect)
         img.setRelativeToPath(node.path())
         nwPane = hou.ui.paneTabOfType(hou.paneTabType.NetworkEditor)
         curImgs = nwPane.backgroundImages()
@@ -88,6 +89,29 @@ if node:
         node.addEventCallback((hou.nodeEventType.FlagChanged,), changeBrightness)
             ]]></scriptCode>
         </scriptItem>
+
+        <scriptToggleItem  id="h.pane.wsheet.edit_images">
+            <insertAfter>opmenu.capture_thumbnail</insertAfter>
+            <label>[Prism] Edit Thumbnails</label>
+            <variableName>backgroundimageediting</variableName>
+            <scriptCode><![CDATA[
+hou.hscript("""
+if( $backgroundimageediting ) then
+set -g backgroundimageediting = 0;
+else
+set -g backgroundimageediting = 1;
+endif
+""")
+hou.hscript('varchange backgroundimageediting')
+(out, err) = hou.hscript('echo $backgroundimageediting')
+nwPane = hou.ui.paneTabOfType(hou.paneTabType.NetworkEditor)
+if( int(out) ):
+    nwPane.setPref("backgroundimageediting", "1")
+else:
+    nwPane.setPref("backgroundimageediting", "0")
+        ]]></scriptCode>
+
+        </scriptToggleItem>
 
 
     </menu>

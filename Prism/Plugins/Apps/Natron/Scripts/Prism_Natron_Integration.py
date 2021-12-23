@@ -11,7 +11,7 @@
 ####################################################
 #
 #
-# Copyright (C) 2016-2019 Richard Frangenberg
+# Copyright (C) 2016-2020 Richard Frangenberg
 #
 # Licensed under GNU GPL-3.0-or-later
 #
@@ -31,224 +31,187 @@
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
 
+import os
+import sys
+import platform
+import shutil
 
 try:
-	from PySide2.QtCore import *
-	from PySide2.QtGui import *
-	from PySide2.QtWidgets import *
-	psVersion = 2
+    from PySide2.QtCore import *
+    from PySide2.QtGui import *
+    from PySide2.QtWidgets import *
 except:
-	from PySide.QtCore import *
-	from PySide.QtGui import *
-	psVersion = 1
+    from PySide.QtCore import *
+    from PySide.QtGui import *
 
-import os, sys
-import traceback, time, platform, shutil, socket
-from functools import wraps
+from PrismUtils.Decorators import err_catcher_plugin as err_catcher
 
 
 class Prism_Natron_Integration(object):
-	def __init__(self, core, plugin):
-		self.core = core
-		self.plugin = plugin
+    def __init__(self, core, plugin):
+        self.core = core
+        self.plugin = plugin
 
-		if platform.system() == "Windows":
-			self.examplePath = os.path.join(os.environ["userprofile"], ".Natron")
-		elif platform.system() == "Linux":
-			userName = os.environ['SUDO_USER'] if 'SUDO_USER' in os.environ else os.environ['USER']
-			self.examplePath = os.path.join("/home", userName, ".Natron")
-		elif platform.system() == "Darwin":
-			userName = os.environ['SUDO_USER'] if 'SUDO_USER' in os.environ else os.environ['USER']
-			self.examplePath = "/Users/%s/.Natron" % userName
+        if platform.system() == "Windows":
+            self.examplePath = os.path.join(os.environ["userprofile"], ".Natron")
+        elif platform.system() == "Linux":
+            userName = (
+                os.environ["SUDO_USER"]
+                if "SUDO_USER" in os.environ
+                else os.environ["USER"]
+            )
+            self.examplePath = os.path.join("/home", userName, ".Natron")
+        elif platform.system() == "Darwin":
+            userName = (
+                os.environ["SUDO_USER"]
+                if "SUDO_USER" in os.environ
+                else os.environ["USER"]
+            )
+            self.examplePath = "/Users/%s/.Natron" % userName
 
+    @err_catcher(name=__name__)
+    def getExecutable(self):
+        execPath = ""
+        if platform.system() == "Windows":
+            execPath = "C:\\Program Files\\INRIA\\Natron-2.3.14\\bin\\Natron.exe"
 
-	def err_decorator(func):
-		@wraps(func)
-		def func_wrapper(*args, **kwargs):
-			exc_info = sys.exc_info()
-			try:
-				return func(*args, **kwargs)
-			except Exception as e:
-				exc_type, exc_obj, exc_tb = sys.exc_info()
-				erStr = ("%s ERROR - Prism_Plugin_Natron_Integration - Core: %s - Plugin: %s:\n%s\n\n%s" % (time.strftime("%d/%m/%y %X"), args[0].core.version, args[0].plugin.version, ''.join(traceback.format_stack()), traceback.format_exc()))
-				if hasattr(args[0].core, "writeErrorLog"):
-					args[0].core.writeErrorLog(erStr)
-				else:
-					QMessageBox.warning(args[0].core.messageParent, "Prism Integration", erStr)
+        return execPath
 
-		return func_wrapper
+    def addIntegration(self, installPath):
+        try:
+            if not os.path.exists(installPath):
+                QMessageBox.warning(
+                    self.core.messageParent,
+                    "Prism Integration",
+                    "Invalid Natron path: %s.\nThe path doesn't exist." % installPath,
+                    QMessageBox.Ok,
+                )
+                return False
 
+            integrationBase = os.path.join(
+                os.path.dirname(os.path.dirname(__file__)), "Integration"
+            )
+            addedFiles = []
 
-	@err_decorator
-	def getExecutable(self):
-		execPath = ""
-		if platform.system() == "Windows":
-			execPath = "C:\\Program Files\\INRIA\\Natron-2.3.14\\bin\\Natron.exe"
+            origMenuFile = os.path.join(integrationBase, "initGui.py")
+            with open(origMenuFile, "r") as mFile:
+                initStr = mFile.read()
 
-		return execPath
+            initFile = os.path.join(installPath, "initGui.py")
+            self.core.integration.removeIntegrationData(filepath=initFile)
 
+            with open(initFile, "a") as initfile:
+                initStr = initStr.replace(
+                    "PRISMROOT", '"%s"' % self.core.prismRoot.replace("\\", "/")
+                )
+                initfile.write(initStr)
 
-	@err_decorator
-	def integrationAdd(self, origin):
-		path = QFileDialog.getExistingDirectory(self.core.messageParent, "Select Natron folder", self.examplePath)
+            addedFiles.append(initFile)
 
-		if path == "":
-			return False
+            wPrismFile = os.path.join(integrationBase, "WritePrism.py")
+            wPrismtFile = os.path.join(installPath, "WritePrism.py")
 
-		result = self.writeNatronFiles(path)
+            if os.path.exists(wPrismtFile):
+                os.remove(wPrismtFile)
 
-		if result:
-			QMessageBox.information(self.core.messageParent, "Prism Integration", "Prism integration was added successfully")
-			return path
+            shutil.copy2(wPrismFile, wPrismtFile)
+            addedFiles.append(wPrismtFile)
 
-		return result
+            wPrismIcon = os.path.join(integrationBase, "WritePrism.png")
+            wPrismtIcon = os.path.join(installPath, "WritePrism.png")
 
+            if os.path.exists(wPrismtIcon):
+                os.remove(wPrismtIcon)
 
-	@err_decorator
-	def integrationRemove(self, origin, installPath):
-		result = self.removeIntegration(installPath)
+            shutil.copy2(wPrismIcon, wPrismtIcon)
+            addedFiles.append(wPrismtIcon)
 
-		if result:
-			QMessageBox.information(self.core.messageParent, "Prism Integration", "Prism integration was removed successfully")
+            if platform.system() in ["Linux", "Darwin"]:
+                for i in addedFiles:
+                    os.chmod(i, 0o777)
 
-		return result
+            return True
 
+        except Exception as e:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
 
-	def writeNatronFiles(self, natronpath):
-		try:
-			if not os.path.exists(natronpath):
-				QMessageBox.warning(self.core.messageParent, "Prism Integration", "Invalid Natron path: %s.\nThe path doesn't exist." % natronpath, QMessageBox.Ok)
-				return False
+            msgStr = (
+                "Errors occurred during the installation of the Natron integration.\nThe installation is possibly incomplete.\n\n%s\n%s\n%s"
+                % (str(e), exc_type, exc_tb.tb_lineno)
+            )
+            msgStr += "\n\nRunning this application as administrator could solve this problem eventually."
 
-			integrationBase = os.path.join(os.path.dirname(os.path.dirname(__file__)), "Integration")
-			addedFiles = []
+            QMessageBox.warning(self.core.messageParent, "Prism Integration", msgStr)
+            return False
 
-			origMenuFile = os.path.join(integrationBase, "initGui.py")
-			with open(origMenuFile, 'r') as mFile:
-				initString = mFile.read()
+    def removeIntegration(self, installPath):
+        try:
+            gizmo = os.path.join(installPath, "WritePrism.py")
+            gizmoc = os.path.join(installPath, "WritePrism.pyc")
+            gizmoIcon = os.path.join(installPath, "WritePrism.png")
 
-			initFile = os.path.join(natronpath, "initGui.py")
+            for i in [gizmo, gizmoc, gizmoIcon]:
+                if os.path.exists(i):
+                    os.remove(i)
 
-			writeInit = True
-			if os.path.exists(initFile):
-				with open(initFile, 'r') as mFile:
-					fileContent = mFile.read()
-				if initString in fileContent:
-					writeInit = False
-				elif "#>>>PrismStart" in fileContent and "#<<<PrismEnd" in fileContent:
-					fileContent = fileContent[:fileContent.find("#>>>PrismStart")] + fileContent[fileContent.find("#<<<PrismEnd")+12:]
-					with open(initFile, 'w') as mFile:
-						mFile.write(fileContent)
+            initFile = os.path.join(installPath, "initGui.py")
+            self.core.integration.removeIntegrationData(filepath=initFile)
 
-			if writeInit:
-				with open(initFile, 'a') as initfile:
-					initfile.write(initString)
+            return True
 
-			with open(initFile, "r") as init:
-				initStr = init.read()
+        except Exception as e:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
 
-			with open(initFile, "w") as init:
-				initStr = initStr.replace("PRISMROOT", "\"%s\"" % self.core.prismRoot.replace("\\", "/"))
-				init.write(initStr)
+            msgStr = (
+                "Errors occurred during the removal of the Natron integration.\n\n%s\n%s\n%s"
+                % (str(e), exc_type, exc_tb.tb_lineno)
+            )
+            msgStr += "\n\nRunning this application as administrator could solve this problem eventually."
 
-			addedFiles.append(initFile)
+            QMessageBox.warning(self.core.messageParent, "Prism Integration", msgStr)
+            return False
 
-			wPrismFile = os.path.join(integrationBase, "WritePrism.py")
-			wPrismtFile = os.path.join(natronpath, "WritePrism.py")
+    def updateInstallerUI(self, userFolders, pItem):
+        try:
+            natronItem = QTreeWidgetItem(["Natron"])
+            pItem.addChild(natronItem)
 
-			if os.path.exists(wPrismtFile):
-				os.remove(wPrismtFile)
+            natronPath = self.examplePath
+            if os.path.exists(natronPath):
+                natronItem.setCheckState(0, Qt.Checked)
+                natronItem.setText(1, natronPath)
+                natronItem.setToolTip(0, natronPath)
+            else:
+                natronItem.setCheckState(0, Qt.Unchecked)
+                natronItem.setText(1, "< doubleclick to browse path >")
+        except Exception as e:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            msg = QMessageBox.warning(
+                self.core.messageParent,
+                "Prism Installation",
+                "Errors occurred during the installation.\n The installation is possibly incomplete.\n\n%s\n%s\n%s\n%s"
+                % (__file__, str(e), exc_type, exc_tb.tb_lineno),
+            )
+            return False
 
-			shutil.copy2(wPrismFile, wPrismtFile)
-			addedFiles.append(wPrismtFile)
+    def installerExecute(self, natronItem, result):
+        try:
+            installLocs = []
 
-			wPrismIcon = os.path.join(integrationBase, "WritePrism.png")
-			wPrismtIcon = os.path.join(natronpath, "WritePrism.png")
+            if natronItem.checkState(0) == Qt.Checked and os.path.exists(
+                natronItem.text(1)
+            ):
+                result["Natron integration"] = self.core.integration.addIntegration(self.plugin.pluginName, path=natronItem.text(1), quiet=True)
+                if result["Natron integration"]:
+                    installLocs.append(natronItem.text(1))
 
-			if os.path.exists(wPrismtIcon):
-				os.remove(wPrismtIcon)
-
-			shutil.copy2(wPrismIcon, wPrismtIcon)
-			addedFiles.append(wPrismtIcon)
-
-			if platform.system() in ["Linux", "Darwin"]:
-				for i in addedFiles:
-					os.chmod(i, 0o777)
-
-			return True
-
-		except Exception as e:
-			exc_type, exc_obj, exc_tb = sys.exc_info()
-
-			msgStr = "Errors occurred during the installation of the Natron integration.\nThe installation is possibly incomplete.\n\n%s\n%s\n%s" % (str(e), exc_type, exc_tb.tb_lineno)
-			msgStr += "\n\nRunning this application as administrator could solve this problem eventually."
-
-			QMessageBox.warning(self.core.messageParent, "Prism Integration", msgStr)
-			return False
-
-
-	def removeIntegration(self, installPath):
-		try:
-			gizmo = os.path.join(installPath, "WritePrism.py")
-			gizmoIcon = os.path.join(installPath, "WritePrism.png")
-
-			for i in [gizmo, gizmoIcon]:
-				if os.path.exists(i):
-					os.remove(i)
-
-			initFile = os.path.join(installPath, "initGui.py")
-
-			for i in [initFile]:
-				if os.path.exists(i):
-					with open(i, "r") as usFile:
-						text = usFile.read()
-
-					if "#>>>PrismStart" in text and "#<<<PrismEnd" in text:
-						text = text[:text.find("#>>>PrismStart")] + text[text.find("#<<<PrismEnd")+len("#<<<PrismEnd"):]
-						with open(i, "w") as usFile:
-							usFile.write(text)
-
-			return True
-
-		except Exception as e:
-			exc_type, exc_obj, exc_tb = sys.exc_info()
-
-			msgStr = "Errors occurred during the removal of the Natron integration.\n\n%s\n%s\n%s" % (str(e), exc_type, exc_tb.tb_lineno)
-			msgStr += "\n\nRunning this application as administrator could solve this problem eventually."
-
-			QMessageBox.warning(self.core.messageParent, "Prism Integration", msgStr)
-			return False
-
-
-	def updateInstallerUI(self, userFolders, pItem):
-		try:
-			natronItem = QTreeWidgetItem(["Natron"])
-			pItem.addChild(natronItem)
-
-			natronPath = self.examplePath
-			if os.path.exists(natronPath):
-				natronItem.setCheckState(0, Qt.Checked)
-				natronItem.setText(1, natronPath)
-				natronItem.setToolTip(0, natronPath)
-			else:
-				natronItem.setCheckState(0, Qt.Unchecked)
-		except Exception as e:
-			exc_type, exc_obj, exc_tb = sys.exc_info()
-			msg = QMessageBox.warning(self.core.messageParent, "Prism Installation", "Errors occurred during the installation.\n The installation is possibly incomplete.\n\n%s\n%s\n%s\n%s" % (__file__, str(e), exc_type, exc_tb.tb_lineno))
-			return False
-
-
-	def installerExecute(self, natronItem, result, locFile):
-		try:
-			installLocs = []
-
-			if natronItem.checkState(0) == Qt.Checked and os.path.exists(natronItem.text(1)):
-				result["Natron integration"] = self.writeNatronFiles(natronItem.text(1))
-				if result["Natron integration"]:
-					installLocs.append(natronItem.text(1))
-
-			return installLocs
-		except Exception as e:
-			exc_type, exc_obj, exc_tb = sys.exc_info()
-			msg = QMessageBox.warning(self.core.messageParent, "Prism Installation", "Errors occurred during the installation.\n The installation is possibly incomplete.\n\n%s\n%s\n%s\n%s" % (__file__, str(e), exc_type, exc_tb.tb_lineno))
-			return False
+            return installLocs
+        except Exception as e:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            msg = QMessageBox.warning(
+                self.core.messageParent,
+                "Prism Installation",
+                "Errors occurred during the installation.\n The installation is possibly incomplete.\n\n%s\n%s\n%s\n%s"
+                % (__file__, str(e), exc_type, exc_tb.tb_lineno),
+            )
+            return False

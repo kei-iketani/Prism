@@ -1,15 +1,23 @@
-#>>>PrismStart
+# >>>PrismStart
 if not NatronEngine.natron.isBackground():
-	import sys, os
+    import os
+    import sys
 
-	Dir = os.path.join(PRISMROOT, "Scripts")
-	if Dir not in sys.path:
-		sys.path.append(Dir)
+    prismRoot = os.getenv("PRISM_ROOT")
+    if not prismRoot:
+        prismRoot = PRISMROOT
 
-	import PrismCore
-	pcore = PrismCore.PrismCore(app="Natron")
+    scriptDir = os.path.join(prismRoot, "Scripts")
+    if scriptDir not in sys.path:
+        sys.path.append(scriptDir)
+
+    import PrismCore
+
+    pcore = PrismCore.PrismCore(app="Natron")
+
 
 def writePrismParamChanged(thisParam, thisNode, thisGroup, app, userEdited):
-	pcore.appPlugin.wpParamChanged(thisParam, thisNode, thisGroup, app, userEdited)
-#<<<PrismEnd
+    pcore.appPlugin.wpParamChanged(thisParam, thisNode, thisGroup, app, userEdited)
 
+
+# <<<PrismEnd

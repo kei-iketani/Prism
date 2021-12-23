@@ -11,7 +11,7 @@
 ####################################################
 #
 #
-# Copyright (C) 2016-2019 Richard Frangenberg
+# Copyright (C) 2016-2020 Richard Frangenberg
 #
 # Licensed under GNU GPL-3.0-or-later
 #
@@ -31,98 +31,148 @@
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
 
-
-import os, sys
-import traceback, time, platform, shutil
-from functools import wraps
+import os
+import platform
+import shutil
 
 try:
-	from PySide2.QtCore import *
-	from PySide2.QtGui import *
-	from PySide2.QtWidgets import *
-	psVersion = 2
+    from PySide2.QtCore import *
+    from PySide2.QtGui import *
+    from PySide2.QtWidgets import *
+
+    psVersion = 2
 except:
-	from PySide.QtCore import *
-	from PySide.QtGui import *
-	psVersion = 1
+    from PySide.QtCore import *
+    from PySide.QtGui import *
+
+    psVersion = 1
+
+from PrismUtils.Decorators import err_catcher_plugin as err_catcher
 
 
 class Prism_Maya_externalAccess_Functions(object):
-	def __init__(self, core, plugin):
-		self.core = core
-		self.plugin = plugin
+    def __init__(self, core, plugin):
+        self.core = core
+        self.plugin = plugin
 
+    @err_catcher(name=__name__)
+    def prismSettings_loadUI(self, origin, tab):
+        if self.core.appPlugin.pluginName == "Maya":
+            origin.w_addModulePath = QWidget()
+            origin.b_addModulePath = QPushButton(
+                "Add current project to Maya module path"
+            )
+            lo_addModulePath = QHBoxLayout()
+            origin.w_addModulePath.setLayout(lo_addModulePath)
+            lo_addModulePath.setContentsMargins(0, 9, 0, 9)
+            lo_addModulePath.addStretch()
+            lo_addModulePath.addWidget(origin.b_addModulePath)
+            tab.layout().addWidget(origin.w_addModulePath)
 
-	def err_decorator(func):
-		@wraps(func)
-		def func_wrapper(*args, **kwargs):
-			exc_info = sys.exc_info()
-			try:
-				return func(*args, **kwargs)
-			except Exception as e:
-				exc_type, exc_obj, exc_tb = sys.exc_info()
-				erStr = ("%s ERROR - Prism_Plugin_Maya_ext - Core: %s - Plugin: %s:\n%s\n\n%s" % (time.strftime("%d/%m/%y %X"), args[0].core.version, args[0].plugin.version, ''.join(traceback.format_stack()), traceback.format_exc()))
-				args[0].core.writeErrorLog(erStr)
+            origin.b_addModulePath.clicked.connect(self.appendEnvFile)
 
-		return func_wrapper
+            if not os.path.exists(self.core.prismIni):
+                origin.b_addModulePath.setEnabled(False)
 
+        lo_settings = QGridLayout()
+        tab.layout().addLayout(lo_settings)
+        spacer = QSpacerItem(0, 0, QSizePolicy.Expanding, QSizePolicy.Expanding)
+        lo_settings.addItem(spacer, 0, 0)
 
-	@err_decorator
-	def prismSettings_loadUI(self, origin, tab):
-		if self.core.appPlugin.pluginName == "Maya":
-			origin.w_addModulePath = QWidget()
-			origin.b_addModulePath = QPushButton("Add current project to Maya module path")
-			lo_addModulePath = QHBoxLayout()
-			origin.w_addModulePath.setLayout(lo_addModulePath)
-			lo_addModulePath.setContentsMargins(0,9,0,9)
-			lo_addModulePath.addStretch()
-			lo_addModulePath.addWidget(origin.b_addModulePath)
-			tab.layout().addWidget(origin.w_addModulePath)
+        origin.l_sceneType = QLabel("Save scene as:")
+        origin.cb_sceneType = QComboBox()
+        lo_settings.addWidget(origin.l_sceneType, 1, 1)
+        lo_settings.addWidget(origin.cb_sceneType, 1, 2)
 
-			origin.b_addModulePath.clicked.connect(self.appendEnvFile)
+        self.saveSceneTypes = [
+            ".ma",
+            ".mb",
+            ".ma (prefer current scene type)",
+            ".mb (prefer current scene type)",
+        ]
 
-			if not os.path.exists(self.core.prismIni):
-				origin.b_addModulePath.setEnabled(False)
+        origin.cb_sceneType.addItems(self.saveSceneTypes)
 
+        origin.l_mayaProject = QLabel("Set Maya project to Prism project: ")
+        origin.chb_mayaProject = QCheckBox("")
+        origin.chb_mayaProject.setChecked(True)
+        origin.chb_mayaProject.setLayoutDirection(Qt.RightToLeft)
+        lo_settings.addWidget(origin.l_mayaProject, 2, 1)
+        lo_settings.addWidget(origin.chb_mayaProject, 2, 2)
 
-	@err_decorator
-	def prismSettings_saveSettings(self, origin):
-		pass
+    @err_catcher(name=__name__)
+    def prismSettings_saveSettings(self, origin, settings):
+        if "maya" not in settings:
+            settings["maya"] = {}
 
-	
-	@err_decorator
-	def prismSettings_loadSettings(self, origin):
-		pass
+        settings["maya"]["saveSceneType"] = origin.cb_sceneType.currentText()
+        settings["maya"]["setMayaProject"] = origin.chb_mayaProject.isChecked()
+        if self.core.appPlugin.pluginName == "Maya":
+            if settings["maya"]["setMayaProject"]:
+                if getattr(self.core, "projectPath", None):
+                    prj = self.core.appPlugin.getMayaProject()
+                    if os.path.normpath(prj) == os.path.normpath(self.core.projectPath):
+                        self.core.appPlugin.setMayaProject(self.core.projectPath)
+            else:
+                self.core.appPlugin.setMayaProject(default=True)
 
+    @err_catcher(name=__name__)
+    def prismSettings_loadSettings(self, origin, settings):
+        if "maya" in settings:
+            if "saveSceneType" in settings["maya"]:
+                saveType = settings["maya"]["saveSceneType"]
+                idx = origin.cb_sceneType.findText(saveType)
+                if idx != -1:
+                    origin.cb_sceneType.setCurrentIndex(idx)
 
-	@err_decorator
-	def getAutobackPath(self, origin, tab):
-		if self.core.appPlugin.pluginName == "Maya":
-			autobackpath = self.executeScript(origin, "cmds.autoSave( q=True, destinationFolder=True )")
-		else:
-			if platform.system() == "Windows":
-				autobackpath = os.path.join(os.getenv('USERPROFILE'), "Documents", "maya", "projects", "default", "autosave")
-			else:
-				if tab == "a":
-					autobackpath = os.path.join(origin.tw_aHierarchy.currentItem().text(1), "Scenefiles", origin.lw_aPipeline.currentItem().text())
-				elif tab == "sf":
-					autobackpath = os.path.join(origin.sBasePath, origin.cursShots, "Scenefiles", origin.cursStep, origin.cursCat)
+            if "setMayaProject" in settings["maya"]:
+                mayaProject = settings["maya"]["setMayaProject"]
+                origin.chb_mayaProject.setChecked(mayaProject)
 
+    @err_catcher(name=__name__)
+    def getAutobackPath(self, origin, tab):
+        autobackpath = ""
+        if self.core.appPlugin.pluginName == "Maya":
+            autobackpath = self.executeScript(
+                origin, "cmds.autoSave( q=True, destinationFolder=True )"
+            )
+        else:
+            if platform.system() == "Windows":
+                autobackpath = os.path.join(
+                    os.getenv("USERPROFILE"),
+                    "Documents",
+                    "maya",
+                    "projects",
+                    "default",
+                    "autosave",
+                )
 
-		fileStr = "Maya Scene File ("
-		for i in self.sceneFormats:
-			fileStr += "*%s " % i
+        fileStr = "Maya Scene File ("
+        for i in self.sceneFormats:
+            fileStr += "*%s " % i
 
-		fileStr += ")"
+        fileStr += ")"
 
-		return autobackpath, fileStr
+        return autobackpath, fileStr
 
+    @err_catcher(name=__name__)
+    def getScenefilePaths(self, scenePath):
+        xgenfiles = [
+            x
+            for x in os.listdir(os.path.dirname(scenePath))
+            if x.startswith(os.path.splitext(os.path.basename(scenePath))[0])
+            and os.path.splitext(x)[1] in [".xgen", ".abc"]
+        ]
+        return xgenfiles
 
-	@err_decorator
-	def copySceneFile(self, origin, origFile, targetPath):
-		xgenfiles = [x for x in os.listdir(os.path.dirname(origFile)) if x.startswith(os.path.splitext(os.path.basename(origFile))[0]) and os.path.splitext(x)[1] in [".xgen", "abc"]]
-		for i in xgenfiles:
-			curFilePath = os.path.join(os.path.dirname(origFile), i).replace("\\","/")
-			tFilePath = os.path.join(os.path.dirname(targetPath), i).replace("\\","/")
-			if curFilePath != tFilePath:
-				shutil.copy2(curFilePath, tFilePath)
+    @err_catcher(name=__name__)
+    def copySceneFile(self, origin, origFile, targetPath, mode="copy"):
+        xgenfiles = self.getScenefilePaths(origFile)
+        for i in xgenfiles:
+            curFilePath = os.path.join(os.path.dirname(origFile), i).replace("\\", "/")
+            tFilePath = os.path.join(os.path.dirname(targetPath), i).replace("\\", "/")
+            if curFilePath != tFilePath:
+                if mode == "copy":
+                    shutil.copy2(curFilePath, tFilePath)
+                elif mode == "move":
+                    shutil.move(curFilePath, tFilePath)

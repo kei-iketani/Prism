@@ -11,7 +11,7 @@
 ####################################################
 #
 #
-# Copyright (C) 2016-2019 Richard Frangenberg
+# Copyright (C) 2016-2020 Richard Frangenberg
 #
 # Licensed under GNU GPL-3.0-or-later
 #
@@ -31,62 +31,55 @@
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
 
+import os
+import platform
 
 try:
-	from PySide2.QtCore import *
-	from PySide2.QtGui import *
-	from PySide2.QtWidgets import *
-	psVersion = 2
-except:
-	from PySide.QtCore import *
-	from PySide.QtGui import *
-	psVersion = 1
+    from PySide2.QtCore import *
+    from PySide2.QtGui import *
+    from PySide2.QtWidgets import *
 
-import sys, os, platform
+    psVersion = 2
+except:
+    from PySide.QtCore import *
+    from PySide.QtGui import *
+
+    psVersion = 1
 
 if psVersion == 1:
-	from UserInterfacesPrism import SetPath_ui
+    from UserInterfacesPrism import SetPath_ui
 else:
-	from UserInterfacesPrism import SetPath_ui_ps2 as SetPath_ui
-	
+    from UserInterfacesPrism import SetPath_ui_ps2 as SetPath_ui
+
 
 class SetPath(QDialog, SetPath_ui.Ui_dlg_SetPath):
-	def __init__(self, core):
-		QDialog.__init__(self)
-		self.setupUi(self)
-		self.core = core
+    def __init__(self, core):
+        QDialog.__init__(self)
+        self.setupUi(self)
+        self.core = core
 
-		if hasattr(self.core, "projectName"):
-			prjName = self.core.projectName
-		else:
-			prjName = ""
+        self.l_description.setText(
+            """All your local scenefiles are saved in this folder.
+This folder should be empty or should not exist.
+The project name will NOT be appended automatically to this path.
+This folder should be on your local hard drive and don't need to be synrchonized to any server.
 
-		self.l_description.setText("All your local scenefiles are saved in this folder.\nThis folder should be empty or should not exist.\nThe project name will NOT be appended automatically to this path.\nThis folder should be on your local hard drive and don't need to be synrchonized to any server.")
+"""
+        )
 
-		if platform.system() == "Windows":
-			defaultLocalPath = os.path.join(os.getenv('USERPROFILE'), "Documents", "LocalProjects", prjName)
-		elif platform.system() == "Linux":
-			defaultLocalPath = os.path.join(os.path.expanduser('~'), "Documents", "LocalProjects", prjName)
-		elif platform.system() == "Darwin":
-			defaultLocalPath = os.path.join(os.path.expanduser('~'), "Documents", "LocalProjects", prjName)	
+        self.browseTitle = "Select Project Folder"
+        self.connectEvents()
 
-		self.e_path.setText(defaultLocalPath)
+    def connectEvents(self):
+        self.b_browse.clicked.connect(self.browse)
+        self.e_path.textChanged.connect(self.enableOk)
 
-		self.browseTitle = "Select Project Folder"
+    def enableOk(self, text):
+        self.buttonBox.button(QDialogButtonBox.Ok).setEnabled(text != "")
 
-		self.connectEvents()
-
-
-	def connectEvents(self):
-		self.b_browse.clicked.connect(self.browse)
-		self.e_path.textChanged.connect(self.enableOk)
-
-
-	def enableOk(self, text):
-		self.buttonBox.button(QDialogButtonBox.Ok).setEnabled(text != "")
-
-
-	def browse(self):
-		path = QFileDialog.getExistingDirectory(self.core.messageParent, self.browseTitle, self.e_path.text())
-		if path != "":
-			self.e_path.setText(path)
+    def browse(self):
+        path = QFileDialog.getExistingDirectory(
+            self.core.messageParent, self.browseTitle, self.e_path.text()
+        )
+        if path != "":
+            self.e_path.setText(path)

@@ -11,7 +11,7 @@
 ####################################################
 #
 #
-# Copyright (C) 2016-2019 Richard Frangenberg
+# Copyright (C) 2016-2020 Richard Frangenberg
 #
 # Licensed under GNU GPL-3.0-or-later
 #
@@ -31,317 +31,352 @@
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
 
+import os
+import sys
 
 try:
-	from PySide2.QtCore import *
-	from PySide2.QtGui import *
-	from PySide2.QtWidgets import *
-	psVersion = 2
+    from PySide2.QtCore import *
+    from PySide2.QtGui import *
+    from PySide2.QtWidgets import *
+
+    psVersion = 2
 except:
-	from PySide.QtCore import *
-	from PySide.QtGui import *
-	psVersion = 1
+    from PySide.QtCore import *
+    from PySide.QtGui import *
+
+    psVersion = 1
 
 if psVersion == 1:
-	import EditShot_ui
+    import EditShot_ui
 else:
-	import EditShot_ui_ps2 as EditShot_ui
-
-import sys, os, traceback, time, platform
-from functools import wraps
-
+    import EditShot_ui_ps2 as EditShot_ui
 
 if sys.version[0] == "3":
-	from configparser import ConfigParser
-	pVersion = 3
+    pVersion = 3
 else:
-	from ConfigParser import ConfigParser
-	pVersion = 2
+    pVersion = 2
+
+from PrismUtils.Decorators import err_catcher
 
 
 class EditShot(QDialog, EditShot_ui.Ui_dlg_EditShot):
-	def __init__(self, core, shotName, sequences):
-		QDialog.__init__(self)
-		self.setupUi(self)
+    def __init__(self, core, shotName, sequences, editSequence=False):
+        QDialog.__init__(self)
+        self.setupUi(self)
 
-		self.core = core
-		self.shotName = shotName
-		self.sequences = sequences
+        self.core = core
+        self.shotName = shotName
+        self.sequences = sequences
+        self.editSequence = editSequence
+        self.core.parentWindow(self)
 
-		if len(self.sequences) == 0:
-			self.b_showSeq.setVisible(False)
+        if len(self.sequences) == 0:
+            self.b_showSeq.setVisible(False)
 
-		self.b_deleteShot.setVisible(False)
+        self.b_deleteShot.setVisible(False)
 
-		self.oiioLoaded = False
-		self.wandLoaded = False
+        self.core.appPlugin.editShot_startup(self)
+        getattr(self.core.appPlugin, "editShot_loadLibs", lambda x: self.loadLibs())(
+            self
+        )
+        self.oiio = self.core.media.getOIIO()
 
-		self.core.appPlugin.editShot_startup(self)
-		getattr(self.core.appPlugin, "editShot_loadLibs", lambda x: self.loadLibs())(self)
+        self.imgPath = ""
+        self.btext = "Next"
 
-		self.imgPath = ""
+        self.loadData()
+        self.connectEvents()
 
-		self.loadData()
-		self.connectEvents()
+    @err_catcher(name=__name__)
+    def connectEvents(self):
+        self.b_showSeq.clicked.connect(self.showSequences)
+        self.b_changePreview.clicked.connect(self.browse)
+        self.buttonBox.clicked.connect(self.buttonboxClicked)
+        self.e_shotName.textEdited.connect(lambda x: self.validate(self.e_shotName))
+        self.e_sequence.textEdited.connect(lambda x: self.validate(self.e_sequence))
+        self.b_deleteShot.clicked.connect(self.deleteShot)
 
+    @err_catcher(name=__name__)
+    def loadLibs(self):
+        pass
 
-	def err_decorator(func):
-		@wraps(func)
-		def func_wrapper(*args, **kwargs):
-			try:
-				return func(*args, **kwargs)
-			except Exception as e:
-				exc_type, exc_obj, exc_tb = sys.exc_info()
-				erStr = ("%s ERROR - EditShot %s:\n%s\n\n%s" % (time.strftime("%d/%m/%y %X"), args[0].core.version, ''.join(traceback.format_stack()), traceback.format_exc()))
-				args[0].core.writeErrorLog(erStr)
+    @err_catcher(name=__name__)
+    def showSequences(self):
+        smenu = QMenu(self)
 
-		return func_wrapper
+        for i in self.sequences:
+            sAct = QAction(i, self)
+            sAct.triggered.connect(lambda x=None, t=i: self.seqClicked(t))
+            smenu.addAction(sAct)
 
+        smenu.exec_(QCursor.pos())
 
-	@err_decorator
-	def connectEvents(self):
-		self.b_showSeq.clicked.connect(self.showSequences)
-		self.b_changePreview.clicked.connect(self.browse)
-		self.buttonBox.clicked.connect(self.buttonboxClicked)
-		self.buttonBox.accepted.connect(self.saveInfo)
-		self.e_shotName.textEdited.connect(lambda x: self.validate(x, self.e_shotName))
-		self.e_sequence.textEdited.connect(lambda x: self.validate(x, self.e_sequence))
-		self.b_deleteShot.clicked.connect(self.deleteShot)
+    @err_catcher(name=__name__)
+    def seqClicked(self, seq):
+        self.e_sequence.setText(seq)
 
+    @err_catcher(name=__name__)
+    def browse(self):
+        formats = "Image File (*.jpg *.png *.exr)"
 
-	@err_decorator
-	def loadOiio(self):
-		try:
-			global oiio
-			if platform.system() == "Windows":
-				from oiio1618 import OpenImageIO as oiio
-			elif platform.system() in ["Linux", "Darwin"]:
-				import OpenImageIO as oiio
+        imgPath = QFileDialog.getOpenFileName(
+            self, "Select preview-image", self.imgPath, formats
+        )[0]
 
-			self.oiioLoaded = True
-		except:
-			pass
+        if imgPath != "":
+            if os.path.splitext(imgPath)[1] == ".exr":
+                qimg = QImage(
+                    self.core.pb.shotPrvXres,
+                    self.core.pb.shotPrvYres,
+                    QImage.Format_RGB16,
+                )
 
+                if self.oiio:
+                    imgSrc = self.oiio.ImageBuf(str(imgPath))
+                    rgbImgSrc = self.oiio.ImageBuf()
+                    self.oiio.ImageBufAlgo.channels(rgbImgSrc, imgSrc, (0, 1, 2))
+                    imgWidth = rgbImgSrc.spec().full_width
+                    imgHeight = rgbImgSrc.spec().full_height
+                    xOffset = 0
+                    yOffset = 0
+                    if (imgWidth / float(imgHeight)) > 1.7778:
+                        newImgWidth = self.core.pb.shotPrvXres
+                        newImgHeight = (
+                            self.core.pb.shotPrvXres / float(imgWidth) * imgHeight
+                        )
+                    else:
+                        newImgHeight = self.core.pb.shotPrvYres
+                        newImgWidth = (
+                            self.core.pb.shotPrvYres / float(imgHeight) * imgWidth
+                        )
+                    imgDst = self.oiio.ImageBuf(
+                        self.oiio.ImageSpec(
+                            int(newImgWidth), int(newImgHeight), 3, self.oiio.UINT8
+                        )
+                    )
+                    self.oiio.ImageBufAlgo.resample(imgDst, rgbImgSrc)
+                    sRGBimg = self.oiio.ImageBuf()
+                    self.oiio.ImageBufAlgo.pow(
+                        sRGBimg, imgDst, (1.0 / 2.2, 1.0 / 2.2, 1.0 / 2.2)
+                    )
+                    bckImg = self.oiio.ImageBuf(
+                        self.oiio.ImageSpec(
+                            int(newImgWidth), int(newImgHeight), 3, self.oiio.UINT8
+                        )
+                    )
+                    self.oiio.ImageBufAlgo.fill(bckImg, (0.5, 0.5, 0.5))
+                    self.oiio.ImageBufAlgo.paste(bckImg, xOffset, yOffset, 0, 0, sRGBimg)
+                    qimg = QImage(
+                        int(newImgWidth), int(newImgHeight), QImage.Format_RGB16
+                    )
+                    for i in range(int(newImgWidth)):
+                        for k in range(int(newImgHeight)):
+                            rgb = qRgb(
+                                bckImg.getpixel(i, k)[0] * 255,
+                                bckImg.getpixel(i, k)[1] * 255,
+                                bckImg.getpixel(i, k)[2] * 255,
+                            )
+                            qimg.setPixel(i, k, rgb)
 
-	@err_decorator
-	def loadLibs(self):
-		if not self.oiioLoaded:
-			global numpy, wand
-			try:
-				import numpy
-				import wand, wand.image
-				self.wandLoaded = True
-			except:
-				pass
+                    pmsmall = QPixmap.fromImage(qimg)
+                else:
+                    QMessageBox.critical(
+                        self.core.messageParent,
+                        "Error",
+                        "No image loader available. Unable to read the file.",
+                    )
+                    return
+            else:
+                pm = self.core.media.getPixmapFromPath(imgPath)
+                if pm.width() == 0:
+                    warnStr = "Cannot read image: %s" % imgPath
+                    msg = QMessageBox(
+                        QMessageBox.Warning,
+                        "Warning",
+                        warnStr,
+                        QMessageBox.Ok,
+                        parent=self.core.messageParent,
+                    )
+                    msg.setFocus()
+                    msg.exec_()
+                    return
 
+                if (pm.width() / float(pm.height())) > 1.7778:
+                    pmsmall = pm.scaledToWidth(self.core.pb.shotPrvXres)
+                else:
+                    pmsmall = pm.scaledToHeight(self.core.pb.shotPrvYres)
 
-	@err_decorator
-	def showSequences(self):
-		smenu = QMenu()
+            self.pmap = pmsmall
 
-		for i in self.sequences:
-			sAct = QAction(i, self)
-			sAct.triggered.connect(lambda x=None, t=i: self.seqClicked(t))
-			smenu.addAction(sAct)
+            self.l_shotPreview.setMinimumSize(self.pmap.width(), self.pmap.height())
+            self.l_shotPreview.setPixmap(self.pmap)
 
-		self.core.appPlugin.setRCStyle(self, smenu)
+    @err_catcher(name=__name__)
+    def validate(self, editField):
+        denyChars = [self.core.sequenceSeparator] if editField == self.e_sequence else None
 
-		smenu.exec_(QCursor.pos())
+        self.core.validateLineEdit(editField, denyChars=denyChars)
 
+    @err_catcher(name=__name__)
+    def deleteShot(self):
+        msgText = (
+            'Are you sure you want to delete shot "%s"?\n\nThis will delete all scenefiles and renderings, which exist in this shot.'
+            % (self.shotName)
+        )
+        if psVersion == 1:
+            flags = QMessageBox.StandardButton.Yes
+            flags |= QMessageBox.StandardButton.No
+            result = QMessageBox.question(
+                self.core.messageParent, "Warning", msgText, flags
+            )
+        else:
+            result = QMessageBox.question(self.core.messageParent, "Warning", msgText)
 
-	@err_decorator
-	def seqClicked(self, seq):
-		self.e_sequence.setText(seq)
+        if str(result).endswith(".Yes"):
+            self.core.createCmd(["deleteShot", self.shotName])
+            self.accept()
 
+    @err_catcher(name=__name__)
+    def buttonboxClicked(self, button):
+        if button.text() == "Create":
+            result = self.saveInfo()
+            if result:
+                self.core.pb.createShot(self.shotName)
+            self.shotName = None
+        elif button.text() == "Create and close":
+            result = self.saveInfo()
+            if result:
+                self.core.pb.createShot(self.shotName)
+                self.accept()
+        elif button.text() == "Save":
+            result = self.saveInfo()
+            if result:
+                self.core.pb.refreshShotinfo()
+                self.accept()
+        elif button.text() == self.btext:
+            result = self.saveInfo()
+            if result:
+                result = self.core.pb.createShot(self.shotName)
+                if result and not result.get("existed", True):
+                    self.accept()
+                    self.core.pb.createStepWindow("s")
 
-	@err_decorator
-	def browse(self):
-		formats = "Image File (*.jpg *.png *.exr)"
+    @err_catcher(name=__name__)
+    def getShotName(self):
+        newSName = self.core.entities.getShotname(
+            self.e_sequence.text(),
+            self.e_shotName.text(),
+        )
+        return newSName
 
-		imgPath = QFileDialog.getOpenFileName(self, "Select preview-image", self.imgPath, formats)[0]
+    @err_catcher(name=__name__)
+    def saveInfo(self):
+        newSName = self.getShotName()
+        shotName, seqName = self.core.entities.splitShotname(newSName)
+        shotNameOrig, seqNameOrig = self.core.entities.splitShotname(self.shotName)
 
-		if imgPath != "":
-			if os.path.splitext(imgPath)[1] == ".exr":
-				qimg = QImage(self.core.pb.shotPrvXres, self.core.pb.shotPrvYres, QImage.Format_RGB16)
+        if not self.editSequence and not shotName:
+            self.core.popup("Invalid shotname")
+            return False
 
-				if self.oiioLoaded:
-					imgSrc = oiio.ImageBuf(str(imgPath))
-					rgbImgSrc = oiio.ImageBuf()
-					oiio.ImageBufAlgo.channels(rgbImgSrc, imgSrc, (0,1,2))
-					imgWidth = rgbImgSrc.spec().full_width
-					imgHeight = rgbImgSrc.spec().full_height
-					xOffset = 0
-					yOffset = 0
-					if (imgWidth/float(imgHeight)) > 1.7778:
-						newImgWidth = self.core.pb.shotPrvXres
-						newImgHeight = self.core.pb.shotPrvXres/float(imgWidth)*imgHeight
-					else:
-						newImgHeight = self.core.pb.shotPrvYres
-						newImgWidth = self.core.pb.shotPrvYres/float(imgHeight)*imgWidth
-					imgDst = oiio.ImageBuf(oiio.ImageSpec(int(newImgWidth),int(newImgHeight),3, oiio.UINT8))
-					oiio.ImageBufAlgo.resample(imgDst, rgbImgSrc)
-					sRGBimg = oiio.ImageBuf()
-					oiio.ImageBufAlgo.pow(sRGBimg, imgDst, (1.0/2.2, 1.0/2.2, 1.0/2.2))
-					bckImg = oiio.ImageBuf(oiio.ImageSpec(int(newImgWidth), int(newImgHeight), 3, oiio.UINT8))
-					oiio.ImageBufAlgo.fill (bckImg, (0.5,0.5,0.5))
-					oiio.ImageBufAlgo.paste(bckImg, xOffset,yOffset,0,0, sRGBimg)
-					qimg = QImage(int(newImgWidth), int(newImgHeight), QImage.Format_RGB16)
-					for i in range(int(newImgWidth)):
-						for k in range(int(newImgHeight)):
-							rgb = qRgb(bckImg.getpixel(i,k)[0]*255, bckImg.getpixel(i,k)[1]*255, bckImg.getpixel(i,k)[2]*255)
-							qimg.setPixel(i,k,rgb)					
+        if self.editSequence and not seqName:
+            self.core.popup("Invalid sequencename")
+            return False
 
-					pmsmall = QPixmap.fromImage(qimg)
-				elif self.wandLoaded:
-					with wand.image.Image(filename=imgPath) as img :
-						imgWidth, imgHeight = [img.width, img.height]
-						img.depth = 8
-						imgArr = numpy.fromstring(img.make_blob('RGB'), dtype='uint{}'.format(img.depth)).reshape(imgHeight, imgWidth, 3)
+        if shotNameOrig and newSName != self.shotName:
+            msgText = (
+                'Are you sure you want to rename this shot from "%s" to "%s"?\n\nThis will rename all files in the subfolders of the shot, which may cause errors, if these files are referenced somewhere else.'
+                % (self.shotName, newSName)
+            )
+            if psVersion == 1:
+                flags = QMessageBox.StandardButton.Yes
+                flags |= QMessageBox.StandardButton.No
+                result = QMessageBox.question(
+                    self.core.messageParent, "Warning", msgText, flags
+                )
+            else:
+                result = QMessageBox.question(
+                    self.core.messageParent, "Warning", msgText
+                )
 
-					qimg = QImage(imgArr,imgWidth, imgHeight, QImage.Format_RGB888)
-					pm = QPixmap.fromImage(qimg)
-					if (pm.width()/float(pm.height())) > 1.7778:
-						pmsmall = pm.scaledToWidth(self.core.pb.shotPrvXres)
-					else:
-						pmsmall = pm.scaledToHeight(self.core.pb.shotPrvYres)
-				else:
-					QMessageBox.critical(self.core.messageParent, "Error", "No image loader available. Unable to read the file.")
-					return
-			else:
-				pm = self.core.pb.getImgPMap(imgPath)
-				if pm.width() == 0:
-					warnStr = "Cannot read image: %s" % imgPath
-					msg = QMessageBox(QMessageBox.Warning, "Warning", warnStr, QMessageBox.Ok, parent=self.core.messageParent)
-					msg.setFocus()
-					msg.exec_()
-					return
+            if str(result).endswith(".Yes"):
+                self.core.entities.renameShot(self.shotName, newSName)
+                if self.core.useLocalFiles:
+                    self.core.createCmd(["renameLocalShot", self.shotName, newSName])
+                self.shotName = newSName
+        else:
+            self.shotName = newSName
 
-				if (pm.width()/float(pm.height())) > 1.7778:
-					pmsmall = pm.scaledToWidth(self.core.pb.shotPrvXres)
-				else:
-					pmsmall = pm.scaledToHeight(self.core.pb.shotPrvYres)
+        if not self.editSequence:
+            self.core.entities.setShotRange(
+                self.shotName, self.sp_startFrame.value(), self.sp_endFrame.value()
+            )
 
-			self.pmap = pmsmall
+        if hasattr(self, "pmap"):
+            prvPath = os.path.join(
+                os.path.dirname(self.core.prismIni),
+                "Shotinfo",
+                "%s_preview.jpg" % self.shotName,
+            )
+            self.core.media.savePixmap(self.pmap, prvPath)
 
-			self.l_shotPreview.setMinimumSize(self.pmap.width(), self.pmap.height())
-			self.l_shotPreview.setPixmap(self.pmap)
+        for i in self.core.prjManagers.values():
+            i.editShot_closed(self, self.shotName)
 
+        return True
 
-	@err_decorator
-	def validate(self, origText, editField):
-		text = self.core.validateStr(origText)
+    @err_catcher(name=__name__)
+    def loadData(self):
+        shotName, seqName = self.core.entities.splitShotname(self.shotName)
+        if seqName and seqName != "no sequence":
+            self.e_sequence.setText(seqName)
 
-		if editField == self.e_sequence:
-			text = text.replace(self.core.sequenceSeparator,"")
+        if shotName:
+            self.e_shotName.setText(shotName)
 
-		if len(text) != len(origText):
-			cpos = editField.cursorPosition()
-			editField.setText(text)
-			editField.setCursorPosition(cpos-1)
+            shotRange = self.core.entities.getShotRange(self.shotName)
+            if shotRange:
+                self.sp_startFrame.setValue(shotRange[0])
+                self.sp_endFrame.setValue(shotRange[1])
 
+            imgPath = os.path.join(
+                os.path.dirname(self.core.prismIni),
+                "Shotinfo",
+                "%s_preview.jpg" % self.shotName,
+            )
+        else:
+            self.setWindowTitle("Create Shot")
+            self.b_deleteShot.setVisible(False)
+            self.buttonBox.removeButton(self.buttonBox.buttons()[0])
+            self.buttonBox.addButton("Create and close", QDialogButtonBox.AcceptRole)
+            self.buttonBox.addButton("Create", QDialogButtonBox.ApplyRole)
+            b = self.buttonBox.addButton(self.btext, QDialogButtonBox.ApplyRole)
+            b.setToolTip("Create shot and open step dialog")
+            self.buttonBox.setStyleSheet("* { button-layout: 2}")
+            if self.e_sequence.text():
+                self.e_shotName.setFocus()
 
-	@err_decorator
-	def deleteShot(self):
-		msgText = "Are you sure you want to delete shot \"%s\"?\n\nThis will delete all scenefiles and renderings, which exist in this shot." % (self.shotName)
-		if psVersion == 1:
-			flags = QMessageBox.StandardButton.Yes
-			flags |= QMessageBox.StandardButton.No
-			result = QMessageBox.question(self.core.messageParent, "Warning", msgText, flags)
-		else:
-			result = QMessageBox.question(self.core.messageParent, "Warning", msgText)
+        if shotName and os.path.exists(imgPath):
+            pm = self.core.media.getPixmapFromPath(imgPath)
+            if (pm.width() / float(pm.height())) > 1.7778:
+                pmap = pm.scaledToWidth(self.core.pb.shotPrvXres)
+            else:
+                pmap = pm.scaledToHeight(self.core.pb.shotPrvYres)
+        else:
+            imgFile = os.path.join(
+                self.core.projectPath, "00_Pipeline", "Fallbacks", "noFileSmall.jpg"
+            )
+            pmap = self.core.media.getPixmapFromPath(imgFile)
 
-		if str(result).endswith(".Yes"):
-			self.core.createCmd(["deleteShot", self.shotName])
-			self.accept()
+        self.l_shotPreview.setMinimumSize(pmap.width(), pmap.height())
+        self.l_shotPreview.setPixmap(pmap)
 
+        for i in self.core.prjManagers.values():
+            i.editShot_open(self, self.shotName)
 
-	@err_decorator
-	def buttonboxClicked(self, button):
-		if button.text() == "Create":
-			result = self.saveInfo()
-			if result:
-				self.core.pb.createShot(self.shotName)
-			self.shotName = None
-		elif button.text() == "Create and close":
-			result = self.saveInfo()
-			if result:
-				self.core.pb.createShot(self.shotName)
-				self.accept()
-
-
-	@err_decorator
-	def saveInfo(self):
-		if self.e_shotName.text() == "":
-			warnStr = "Invalid shotname"
-			msg = QMessageBox(QMessageBox.Warning, "Warning", warnStr, QMessageBox.Ok, parent=self.core.messageParent)
-			msg.setFocus()
-			msg.exec_()
-			return False
-
-		if self.e_sequence.text() == "":
-			newSName = self.e_shotName.text()
-		else:
-			newSName = "%s%s%s" %(self.e_sequence.text(), self.core.sequenceSeparator, self.e_shotName.text())
-
-		if self.shotName is not None and newSName != self.shotName:
-			msgText = "Are you sure you want to rename this shot from \"%s\" to \"%s\"?\n\nThis will rename all files in the subfolders of the shot, which may cause errors, if these files are referenced somewhere else." % (self.shotName, newSName)
-			if psVersion == 1:
-				flags = QMessageBox.StandardButton.Yes
-				flags |= QMessageBox.StandardButton.No
-				result = QMessageBox.question(self.core.messageParent, "Warning", msgText, flags)
-			else:
-				result = QMessageBox.question(self.core.messageParent, "Warning", msgText)
-
-			if str(result).endswith(".Yes"):
-				self.core.createCmd(["renameShot", self.shotName, newSName])
-				self.core.checkCommands()
-
-		self.shotName = newSName
-		self.core.setShotRange(self.shotName, self.sp_startFrame.value(), self.sp_endFrame.value())
-
-		if hasattr(self, "pmap"):
-			prvPath = os.path.join(os.path.dirname(self.core.prismIni), "Shotinfo", "%s_preview.jpg" % self.shotName)
-			self.core.pb.savePMap(self.pmap, prvPath)
-
-		for i in self.core.prjManagers.values():
-			i.editShot_closed(self, self.shotName)
-
-		return True
-
-
-	@err_decorator
-	def loadData(self):
-		if self.shotName is not None:
-			shotName, seqName = self.core.pb.splitShotname(self.shotName)
-			if seqName and seqName != "no sequence":
-				self.e_sequence.setText(seqName)
-			self.e_shotName.setText(shotName)
-
-			shotRange = self.core.getShotRange(self.shotName)
-			if shotRange:
-				self.sp_startFrame.setValue(shotRange[0])
-				self.sp_endFrame.setValue(shotRange[1])
-
-			imgPath = os.path.join(os.path.dirname(self.core.prismIni), "Shotinfo", "%s_preview.jpg" % self.shotName)
-		else:
-			self.b_deleteShot.setVisible(False)
-			self.buttonBox.removeButton(self.buttonBox.buttons()[0])
-			self.buttonBox.addButton("Create and close", QDialogButtonBox.AcceptRole)
-			self.buttonBox.addButton("Create", QDialogButtonBox.ApplyRole)
-			self.buttonBox.setStyleSheet("* { button-layout: 2}")
-
-		if self.shotName is not None and os.path.exists(imgPath):
-			pm = self.core.pb.getImgPMap(imgPath)
-			if (pm.width()/float(pm.height())) > 1.7778:
-				pmap = pm.scaledToWidth(self.core.pb.shotPrvXres)
-			else:
-				pmap = pm.scaledToHeight(self.core.pb.shotPrvYres)
-		else:
-			imgFile = os.path.join(self.core.projectPath, "00_Pipeline", "Fallbacks", "noFileSmall.jpg")
-			pmap = self.core.pb.getImgPMap(imgFile)
-
-		self.l_shotPreview.setMinimumSize(pmap.width(), pmap.height())
-		self.l_shotPreview.setPixmap(pmap)
-
-		for i in self.core.prjManagers.values():
-			i.editShot_open(self, self.shotName)
+    @err_catcher(name=__name__)
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Enter or event.key() == Qt.Key_Return:
+            self.buttonboxClicked(self.buttonBox.buttons()[-1])
+        elif event.key() == Qt.Key_Escape:
+            self.reject()

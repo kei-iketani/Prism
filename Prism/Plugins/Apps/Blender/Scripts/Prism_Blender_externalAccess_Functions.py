@@ -11,7 +11,7 @@
 ####################################################
 #
 #
-# Copyright (C) 2016-2019 Richard Frangenberg
+# Copyright (C) 2016-2020 Richard Frangenberg
 #
 # Licensed under GNU GPL-3.0-or-later
 #
@@ -31,166 +31,131 @@
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
 
-
-import os, sys
-import traceback, time, platform
-from functools import wraps
+import os
+import platform
 
 try:
-	from PySide2.QtCore import *
-	from PySide2.QtGui import *
-	from PySide2.QtWidgets import *
-	psVersion = 2
-except:
-	from PySide.QtCore import *
-	from PySide.QtGui import *
-	psVersion = 1
+    from PySide2.QtCore import *
+    from PySide2.QtGui import *
+    from PySide2.QtWidgets import *
 
-	
+    psVersion = 2
+except:
+    from PySide.QtCore import *
+    from PySide.QtGui import *
+
+    psVersion = 1
+
+from PrismUtils.Decorators import err_catcher_plugin as err_catcher
+
 
 class Prism_Blender_externalAccess_Functions(object):
-	def __init__(self, core, plugin):
-		self.core = core
-		self.plugin = plugin
+    def __init__(self, core, plugin):
+        self.core = core
+        self.plugin = plugin
 
+    @err_catcher(name=__name__)
+    def prismSettings_loadUI(self, origin, tab):
+        origin.gb_bldAutoSave = QGroupBox("Auto save renderings")
+        lo_bldAutoSave = QVBoxLayout()
+        origin.gb_bldAutoSave.setLayout(lo_bldAutoSave)
+        origin.gb_bldAutoSave.setCheckable(True)
+        origin.gb_bldAutoSave.setChecked(False)
 
-	def err_decorator(func):
-		@wraps(func)
-		def func_wrapper(*args, **kwargs):
-			exc_info = sys.exc_info()
-			try:
-				return func(*args, **kwargs)
-			except Exception as e:
-				exc_type, exc_obj, exc_tb = sys.exc_info()
-				erStr = ("%s ERROR - Prism_Plugin_Blender_ext - Core: %s - Plugin: %s:\n%s\n\n%s" % (time.strftime("%d/%m/%y %X"), args[0].core.version, args[0].plugin.version, ''.join(traceback.format_stack()), traceback.format_exc()))
-				args[0].core.writeErrorLog(erStr)
+        origin.chb_bldRperProject = QCheckBox("use path only for current project")
 
-		return func_wrapper
+        w_bldAutoSavePath = QWidget()
+        lo_bldAutoSavePath = QHBoxLayout()
+        origin.le_bldAutoSavePath = QLineEdit()
+        b_bldAutoSavePath = QPushButton("...")
 
+        lo_bldAutoSavePath.setContentsMargins(0, 0, 0, 0)
+        b_bldAutoSavePath.setMinimumSize(40, 0)
+        b_bldAutoSavePath.setMaximumSize(40, 1000)
+        b_bldAutoSavePath.setFocusPolicy(Qt.NoFocus)
+        b_bldAutoSavePath.setContextMenuPolicy(Qt.CustomContextMenu)
+        w_bldAutoSavePath.setLayout(lo_bldAutoSavePath)
+        lo_bldAutoSavePath.addWidget(origin.le_bldAutoSavePath)
+        lo_bldAutoSavePath.addWidget(b_bldAutoSavePath)
 
-	@err_decorator
-	def prismSettings_loadUI(self, origin, tab):
-		origin.gb_bldAutoSave = QGroupBox("Auto save renderings")
-		lo_bldAutoSave = QVBoxLayout()
-		origin.gb_bldAutoSave.setLayout(lo_bldAutoSave)
-		origin.gb_bldAutoSave.setCheckable(True)
-		origin.gb_bldAutoSave.setChecked(False)
+        lo_bldAutoSave.addWidget(origin.chb_bldRperProject)
+        lo_bldAutoSave.addWidget(w_bldAutoSavePath)
+        tab.layout().addWidget(origin.gb_bldAutoSave)
 
-		origin.chb_bldRperProject = QCheckBox("use path only for current project")
+        if hasattr(self.core, "projectPath") and self.core.projectPath is not None:
+            origin.le_bldAutoSavePath.setText(self.core.projectPath)
 
-		w_bldAutoSavePath = QWidget()
-		lo_bldAutoSavePath = QHBoxLayout()
-		origin.le_bldAutoSavePath = QLineEdit()
-		b_bldAutoSavePath = QPushButton("...")
+        b_bldAutoSavePath.clicked.connect(
+            lambda: origin.browse(
+                windowTitle="Select render save path", uiEdit=origin.le_bldAutoSavePath
+            )
+        )
+        b_bldAutoSavePath.customContextMenuRequested.connect(
+            lambda: self.core.openFolder(origin.le_bldAutoSavePath.text())
+        )
 
-		lo_bldAutoSavePath.setContentsMargins(0,0,0,0)
-		b_bldAutoSavePath.setMinimumSize(40,0)
-		b_bldAutoSavePath.setMaximumSize(40,1000)
-		b_bldAutoSavePath.setFocusPolicy(Qt.NoFocus)
-		b_bldAutoSavePath.setContextMenuPolicy(Qt.CustomContextMenu)
-		w_bldAutoSavePath.setLayout(lo_bldAutoSavePath)
-		lo_bldAutoSavePath.addWidget(origin.le_bldAutoSavePath)
-		lo_bldAutoSavePath.addWidget(b_bldAutoSavePath)
+        origin.groupboxes.append(origin.gb_bldAutoSave)
 
-		lo_bldAutoSave.addWidget(origin.chb_bldRperProject)
-		lo_bldAutoSave.addWidget(w_bldAutoSavePath)
-		tab.layout().addWidget(origin.gb_bldAutoSave)
+    @err_catcher(name=__name__)
+    def prismSettings_saveSettings(self, origin, settings):
+        if "blender" not in settings:
+            settings["blender"] = {}
 
-		if hasattr(self.core, "projectPath") and self.core.projectPath is not None:
-			origin.le_bldAutoSavePath.setText(self.core.projectPath)
+        bsPath = self.core.fixPath(origin.le_bldAutoSavePath.text())
+        if not bsPath.endswith(os.sep):
+            bsPath += os.sep
 
-		b_bldAutoSavePath.clicked.connect(lambda: origin.browse(windowTitle="Select render save path", uiEdit=origin.le_bldAutoSavePath))
-		b_bldAutoSavePath.customContextMenuRequested.connect(lambda: self.core.openFolder(origin.le_bldAutoSavePath.text()))
+        if origin.chb_bldRperProject.isChecked():
+            if os.path.exists(self.core.prismIni):
+                k = "autosavepath_%s" % self.core.projectName
+                settings["blender"][k] = bsPath
+        else:
+            settings["blender"]["autosavepath"] = bsPath
 
-		origin.groupboxes.append(origin.gb_bldAutoSave)
+        settings["blender"]["autosaverender"] = origin.gb_bldAutoSave.isChecked()
+        settings["blender"]["autosaveperproject"] = origin.chb_bldRperProject.isChecked()
 
+    @err_catcher(name=__name__)
+    def prismSettings_loadSettings(self, origin, settings):
+        if "blender" in settings:
+            if "autosaverender" in settings["blender"]:
+                origin.gb_bldAutoSave.setChecked(settings["blender"]["autosaverender"])
 
-	@err_decorator
-	def prismSettings_saveSettings(self, origin):
-		saveData = []
+            if "autosaveperproject" in settings["blender"]:
+                origin.chb_bldRperProject.setChecked(settings["blender"]["autosaveperproject"])
 
-		bsPath = self.core.fixPath(origin.le_bldAutoSavePath.text())
-		if not bsPath.endswith(os.sep):
-			bsPath += os.sep
-		if origin.chb_bldRperProject.isChecked():
-			if os.path.exists(self.core.prismIni):
-				saveData.append(["blender", "autosavepath_%s" % origin.e_curPname.text(), bsPath])
-		else:
-			saveData.append(["blender", "autosavepath", bsPath])
+            pData = "autosavepath_%s" % getattr(self.core, "projectName", "")
+            if pData in settings["blender"]:
+                if origin.chb_bldRperProject.isChecked():
+                    origin.le_bldAutoSavePath.setText(settings["blender"][pData])
 
-		saveData.append(['blender', 'autosaverender', str(origin.gb_bldAutoSave.isChecked())])
-		saveData.append(['blender', 'autosaveperproject', str(origin.chb_bldRperProject.isChecked())])
+            if "autosavepath" in settings["blender"]:
+                if not origin.chb_bldRperProject.isChecked():
+                    origin.le_bldAutoSavePath.setText(settings["blender"]["autosavepath"])
 
-		return saveData
+    @err_catcher(name=__name__)
+    def createProject_startup(self, origin):
+        if self.core.useOnTop:
+            origin.setWindowFlags(origin.windowFlags() ^ Qt.WindowStaysOnTopHint)
 
-	
-	@err_decorator
-	def prismSettings_loadSettings(self, origin):
-		loadData = {}
-		loadFunctions = {}
+    @err_catcher(name=__name__)
+    def editShot_startup(self, origin):
+        pass
 
-		loadData["bld_autosaverender"] = ['blender', 'autosaverender', 'bool']
-		loadFunctions["bld_autosaverender"] = lambda x: origin.gb_bldAutoSave.setChecked(x)
-		
-		loadData["bld_asPerproject"] = ['blender', 'autosaveperproject', 'bool']
-		loadFunctions["bld_asPerproject"] = lambda x: origin.chb_bldRperProject.setChecked(x)
+    @err_catcher(name=__name__)
+    def shotgunPublish_startup(self, origin):
+        pass
 
-		if hasattr(self.core, "projectName"):
-			loadData["bld_autosavepathprj"] = ['blender', "autosavepath_%s" % self.core.projectName]
-		else:
-			loadData["bld_autosavepathprj"] = ['blender', 'autosavepath_']
+    @err_catcher(name=__name__)
+    def getAutobackPath(self, origin, tab):
+        autobackpath = ""
+        if platform.system() == "Windows":
+            autobackpath = os.path.join(os.getenv("LocalAppdata"), "Temp")
 
-		loadFunctions["bld_autosavepathprj"] = lambda x, y=origin: self.prismSettings_loadAutoSavePathPrj(y, x)
+        fileStr = "Blender Scene File ("
+        for i in self.sceneFormats:
+            fileStr += "*%s " % i
 
-		loadData["bld_autosavepath"] = ['blender', 'autosavepath']
-		loadFunctions["bld_autosavepath"] = lambda x, y=origin: self.prismSettings_loadAutoSavePath(y, x)
+        fileStr += ")"
 
-		return loadData, loadFunctions
-
-
-	@err_decorator
-	def prismSettings_loadAutoSavePathPrj(self, origin, loadData):
-		if origin.chb_bldRperProject.isChecked():
-			origin.le_bldAutoSavePath.setText(loadData)
-
-
-	@err_decorator
-	def prismSettings_loadAutoSavePath(self, origin, loadData):
-		if not origin.chb_bldRperProject.isChecked():
-			origin.le_bldAutoSavePath.setText(loadData)
-
-
-	@err_decorator
-	def createProject_startup(self, origin):
-		if self.core.useOnTop:
-			origin.setWindowFlags(origin.windowFlags() ^ Qt.WindowStaysOnTopHint)
-
-
-	@err_decorator
-	def editShot_startup(self, origin):
-		pass
-
-
-	@err_decorator
-	def shotgunPublish_startup(self, origin):
-		pass
-
-
-	@err_decorator
-	def getAutobackPath(self, origin, tab):
-		if platform.system() == "Windows":
-			autobackpath = os.path.join(os.getenv('LocalAppdata'), "Temp")
-		else:
-			if tab == "a":
-				autobackpath = os.path.join(origin.tw_aHierarchy.currentItem().text(1), "Scenefiles", origin.lw_aPipeline.currentItem().text())
-			elif tab == "sf":
-				autobackpath = os.path.join(origin.sBasePath, origin.cursShots, "Scenefiles", origin.cursStep, origin.cursCat)
-
-
-		fileStr = "Blender Scene File ("
-		for i in self.sceneFormats:
-			fileStr += "*%s " % i
-
-		fileStr += ")"
-
-		return autobackpath, fileStr
+        return autobackpath, fileStr

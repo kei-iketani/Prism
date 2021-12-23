@@ -11,7 +11,7 @@
 ####################################################
 #
 #
-# Copyright (C) 2016-2019 Richard Frangenberg
+# Copyright (C) 2016-2020 Richard Frangenberg
 #
 # Licensed under GNU GPL-3.0-or-later
 #
@@ -31,110 +31,62 @@
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
 
-
-import os, sys
-import traceback, time, platform, subprocess
-from functools import wraps
+import os
+import subprocess
 
 try:
-	from PySide2.QtCore import *
-	from PySide2.QtGui import *
-	from PySide2.QtWidgets import *
-	psVersion = 2
+    from PySide2.QtCore import *
+    from PySide2.QtGui import *
+    from PySide2.QtWidgets import *
 except:
-	from PySide.QtCore import *
-	from PySide.QtGui import *
-	psVersion = 1
+    from PySide.QtCore import *
+    from PySide.QtGui import *
 
-
-if platform.system() == "Windows":
-	if sys.version[0] == "3":
-		import winreg as _winreg
-	else:
-		import _winreg
+from PrismUtils.Decorators import err_catcher_plugin as err_catcher
 
 
 class Prism_Photoshop_externalAccess_Functions(object):
-	def __init__(self, core, plugin):
-		self.core = core
-		self.plugin = plugin
+    def __init__(self, core, plugin):
+        self.core = core
+        self.plugin = plugin
 
+    @err_catcher(name=__name__)
+    def getAutobackPath(self, origin, tab):
+        autobackpath = ""
 
-	def err_decorator(func):
-		@wraps(func)
-		def func_wrapper(*args, **kwargs):
-			exc_info = sys.exc_info()
-			try:
-				return func(*args, **kwargs)
-			except Exception as e:
-				exc_type, exc_obj, exc_tb = sys.exc_info()
-				erStr = ("%s ERROR - Prism_Plugin_Photoshop_ext - Core: %s - Plugin: %s:\n%s\n\n%s" % (time.strftime("%d/%m/%y %X"), args[0].core.version, args[0].plugin.version, ''.join(traceback.format_stack()), traceback.format_exc()))
-				args[0].core.writeErrorLog(erStr)
+        fileStr = "Photoshop Script ("
+        for i in self.sceneFormats:
+            fileStr += "*%s " % i
 
-		return func_wrapper
+        fileStr += ")"
 
+        return autobackpath, fileStr
 
-	@err_decorator
-	def prismSettings_loadUI(self, origin, tab):
-		pass
+    @err_catcher(name=__name__)
+    def projectBrowser_loadUI(self, origin):
+        if self.core.appPlugin.pluginName == "Standalone":
+            psMenu = QMenu("Photoshop")
+            psAction = QAction("Connect", origin)
+            psAction.triggered.connect(lambda: self.connectToPhotoshop(origin))
+            psMenu.addAction(psAction)
+            origin.menuTools.insertSeparator(origin.menuTools.actions()[-2])
+            origin.menuTools.insertMenu(origin.menuTools.actions()[-2], psMenu)
 
+    @err_catcher(name=__name__)
+    def customizeExecutable(self, origin, appPath, filepath):
+        self.connectToPhotoshop(origin, filepath=filepath)
+        return True
 
-	@err_decorator
-	def prismSettings_saveSettings(self, origin):
-		saveData = []
+    @err_catcher(name=__name__)
+    def connectToPhotoshop(self, origin, filepath=""):
+        pythonPath = self.core.getPythonPath(executable="Prism Project Browser")
 
-		return saveData
-
-
-	@err_decorator
-	def prismSettings_loadSettings(self, origin):
-		loadData = {}
-		loadFunctions = {}
-
-		return loadData, loadFunctions
-
-
-	@err_decorator
-	def getAutobackPath(self, origin, tab):
-		autobackpath = ""
-
-		if tab == "a":
-			autobackpath = os.path.join(origin.tw_aHierarchy.currentItem().text(1), "Scenefiles", origin.lw_aPipeline.currentItem().text())
-		elif tab == "sf":
-			autobackpath = os.path.join(origin.sBasePath, origin.cursShots, "Scenefiles", origin.cursStep, origin.cursCat)
-
-		fileStr = "Photoshop Script ("
-		for i in self.sceneFormats:
-			fileStr += "*%s " % i
-
-		fileStr += ")"
-
-		return autobackpath, fileStr
-
-
-	@err_decorator
-	def projectBrowser_loadUI(self, origin):
-		if self.core.appPlugin.pluginName == "Standalone":
-			psMenu = QMenu("Photoshop")
-			psAction = QAction("Connect", origin)
-			psAction.triggered.connect(lambda: self.connectToPhotoshop(origin))
-			psMenu.addAction(psAction)
-			origin.menuTools.addSeparator()
-			origin.menuTools.addMenu(psMenu)
-
-
-	@err_decorator
-	def customizeExecutable(self, origin, appPath, filepath):
-		self.connectToPhotoshop(origin, filepath=filepath)
-		return True
-
-
-	@err_decorator
-	def connectToPhotoshop(self, origin, filepath=""):
-		if platform.system() == "Windows":
-			pythonPath = os.path.join(self.core.prismRoot, "Python27", "PrismProjectBrowser.exe")
-		else:
-			pythonPath = "python"
-
-		menuPath = os.path.join(self.core.prismRoot, "Plugins", "Apps", "Photoshop", "Scripts", "Prism_Photoshop_MenuTools.py")
-		subprocess.Popen([pythonPath, menuPath, "Tools", filepath])
+        menuPath = os.path.join(
+            self.core.prismRoot,
+            "Plugins",
+            "Apps",
+            "Photoshop",
+            "Scripts",
+            "Prism_Photoshop_MenuTools.py",
+        )
+        subprocess.Popen([pythonPath, menuPath, "Tools", filepath])

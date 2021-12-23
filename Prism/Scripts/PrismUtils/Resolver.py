@@ -11,7 +11,7 @@
 ####################################################
 #
 #
-# Copyright (C) 2016-2019 Richard Frangenberg
+# Copyright (C) 2016-2020 Richard Frangenberg
 #
 # Licensed under GNU GPL-3.0-or-later
 #
@@ -31,142 +31,127 @@
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
 
-import os, sys, traceback, time
-from functools import wraps
+import os
+
+from PrismUtils.Decorators import err_catcher
 
 
 class Resolver(object):
-	def __init__(self, core):
-		super(Resolver, self).__init__()
-		self.core = core
+    def __init__(self, core):
+        super(Resolver, self).__init__()
+        self.core = core
 
+    @err_catcher(name=__name__)
+    def resolveFields(self, uri, uriType="exportProduct"):
+        fields = {}
+        if uriType == "exportProduct":
+            resolveData = uri.split("|")
+            if resolveData[0] not in ["asset", "shot"]:
+                resolveData.insert(0, "asset")
 
-	def err_decorator(func):
-		@wraps(func)
-		def func_wrapper(*args, **kwargs):
-			exc_info = sys.exc_info()
-			try:
-				return func(*args, **kwargs)
-			except Exception as e:
-				exc_type, exc_obj, exc_tb = sys.exc_info()
-				erStr = ("%s ERROR - Resolver %s:\n%s\n\n%s" % (time.strftime("%d/%m/%y %X"), args[0].core.version, ''.join(traceback.format_stack()), traceback.format_exc()))
-				args[0].core.writeErrorLog(erStr)
+            fields = {"entity": resolveData[0]}
+            if len(resolveData) >= 2:
+                fields["entityName"] = resolveData[1]
 
-		return func_wrapper
+            if len(resolveData) >= 3:
+                fields["task"] = resolveData[2]
 
+            if len(resolveData) >= 4:
+                fields["version"] = resolveData[3]
 
-	@err_decorator
-	def resolveFields(self, uri, uriType="exportProduct"):
-		fields = {}
-		if uriType == "exportProduct":
-			resolveData = uri.split("|")
-			if resolveData[0] not in ["asset", "shot"]:
-				resolveData.insert(0, "asset")
+        return fields
 
-			fields = {"entity": resolveData[0]}
-			if len(resolveData) >= 2:
-				fields["entityName"] = resolveData[1]
+    @err_catcher(name=__name__)
+    def resolvePath(self, uri, uriType="exportProduct", target="file"):
+        fields = self.resolveFields(uri, uriType)
 
-			if len(resolveData) >= 3:
-				fields["task"] = resolveData[2]
+        path = ""
+        for i in range(1):
+            if not hasattr(self.core, "projectPath") or not self.core.projectPath:
+                continue
 
-			if len(resolveData) >= 4:
-				fields["version"] = resolveData[3]
+            path = self.core.projectName
 
-		return fields
+            if "entity" not in fields:
+                continue
 
+            if fields["entity"] == "asset":
+                path = self.core.getAssetPath()
+            elif fields["entity"] == "shot":
+                path = self.core.getShotPath()
 
-	@err_decorator
-	def resolvePath(self, uri, uriType="exportProduct", target="file"):
-		fields = self.resolveFields(uri, uriType)
+            if "entityName" not in fields:
+                continue
 
-		path = ""
-		for i in range(1):
-			if not hasattr(self.core, "projectPath") or not self.core.projectPath:
-				continue
+            entityPath = os.path.join(path, fields["entityName"])
+            if fields["entity"] == "asset":
+                if not os.path.exists(entityPath) and not "/" in fields["entityName"]:
+                    for i in self.core.entities.getAssetPaths():
+                        if os.path.basename(i) == fields["entityName"]:
+                            entityPath = i
+                            break
 
-			path = self.core.projectName
+            if not os.path.exists(entityPath):
+                continue
 
-			if "entity" not in fields:
-				continue
+            path = entityPath
 
-			if fields["entity"] == "asset":
-				path = self.core.getAssetPath()
-			elif fields["entity"] == "shot":
-				path = self.core.getShotPath()
+            if "task" not in fields:
+                if target not in ["task", "version", "file"]:
+                    continue
 
-			if "entityName" not in fields:
-				continue
+                taskPath = os.path.join(path, "Export")
+                if not os.path.exists(taskPath):
+                    continue
 
-			entityPath = os.path.join(path, fields["entityName"])
-			if fields["entity"] == "asset":
-				if not os.path.exists(entityPath) and not "/" in fields["entityName"]:
-					for i in self.core.getAssetPaths():
-						if os.path.basename(i) == fields["entityName"]:
-							entityPath = i
-							break					
+                for i in os.walk(taskPath):
+                    tasks = i[1]
+                    break
 
-			if not os.path.exists(entityPath):
-				continue
+                if not tasks:
+                    continue
 
-			path = entityPath
+                fields["task"] = tasks[0]
 
-			if "task" not in fields:
-				if target not in ["task", "version", "file"]:
-					continue
+            taskPath = os.path.join(path, "Export", fields["task"])
+            if not os.path.exists(taskPath):
+                continue
 
-				taskPath = os.path.join(path, "Export")
-				if not os.path.exists(taskPath):
-					continue
+            path = taskPath
 
-				for i in os.walk(taskPath):
-					tasks = i[1]
-					break
+            if "version" not in fields:
+                if target not in ["version", "file"]:
+                    continue
 
-				if not tasks:
-					continue
+                if not os.path.exists(path):
+                    continue
 
-				fields["task"] = tasks[0]
+                for i in os.walk(path):
 
-			taskPath = os.path.join(path, "Export", fields["task"])
-			if not os.path.exists(taskPath):
-				continue
+                    versions = i[1]
+                    break
 
-			path = taskPath
+                if not versions:
+                    continue
 
-			if "version" not in fields:
-				if target not in ["version", "file"]:
-					continue
+                fields["version"] = versions[-1]
 
-				if not os.path.exists(path):
-					continue
+            versionPath = os.path.join(path, fields["version"])
 
-				for i in os.walk(path):
+            if not os.path.exists(versionPath):
+                continue
 
-					versions = i[1]
-					break
+            path = versionPath
 
-				if not versions:
-					continue
+            if target not in ["file"]:
+                continue
 
-				fields["version"] = versions[-1]
+            for fcont in os.walk(path):
+                for folder in fcont[1]:
+                    fpath = os.path.join(fcont[0], folder)
 
-			versionPath = os.path.join(path, fields["version"])
+                    for f in os.listdir(fpath):
+                        path = os.path.join(fpath, f)
+                        continue
 
-			if not os.path.exists(versionPath):
-				continue
-
-			path = versionPath
-
-			if target not in ["file"]:
-				continue
-
-			for fcont in os.walk(path):
-				for folder in fcont[1]:
-					fpath = os.path.join(fcont[0], folder)
-					
-					for f in os.listdir(fpath):
-						path = os.path.join(fpath, f)
-						continue
-
-		return os.path.normpath(path)
+        return os.path.normpath(path)

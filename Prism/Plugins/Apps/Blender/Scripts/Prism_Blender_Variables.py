@@ -11,7 +11,7 @@
 ####################################################
 #
 #
-# Copyright (C) 2016-2019 Richard Frangenberg
+# Copyright (C) 2016-2020 Richard Frangenberg
 #
 # Licensed under GNU GPL-3.0-or-later
 #
@@ -31,21 +31,20 @@
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
 
-
 class Prism_Blender_Variables(object):
-	def __init__(self, core, plugin):
-		self.version = "v1.2.1.23"
-		self.pluginName = "Blender"
-		self.pluginType = "App"
-		self.appShortName = "Bld"
-		self.appType = "3d"
-		self.hasQtParent = False
-		self.sceneFormats = [".blend"]
-		self.appSpecificFormats = self.sceneFormats
-		self.outputFormats = [".abc", ".obj", ".fbx", ".blend", "ShotCam"]
-		self.appColor = [200,180 ,0]
-		self.appVersionPresets = ["2.79"]
-		self.preferredUnit = "meter"
-		self.canDeleteRenderPasses = False
-		self.colorButtonWithStyleSheet = True
-		self.platforms = ["Windows"]
+    def __init__(self, core, plugin):
+        self.version = "v1.3.0.0"
+        self.pluginName = "Blender"
+        self.pluginType = "App"
+        self.appShortName = "Bld"
+        self.appType = "3d"
+        self.hasQtParent = False
+        self.sceneFormats = [".blend"]
+        self.appSpecificFormats = self.sceneFormats
+        self.outputFormats = [".abc", ".obj", ".fbx", ".blend", "ShotCam"]
+        self.appColor = [200, 180, 0]
+        self.appVersionPresets = ["2.90"]
+        self.preferredUnit = "meter"
+        self.canDeleteRenderPasses = False
+        self.colorButtonWithStyleSheet = True
+        self.platforms = ["Windows", "Linux"]

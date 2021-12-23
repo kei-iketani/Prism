@@ -11,7 +11,7 @@
 ####################################################
 #
 #
-# Copyright (C) 2016-2019 Richard Frangenberg
+# Copyright (C) 2016-2020 Richard Frangenberg
 #
 # Licensed under GNU GPL-3.0-or-later
 #
@@ -31,261 +31,264 @@
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
 
+import os
+import sys
+import datetime
 
 try:
-	from PySide2.QtCore import *
-	from PySide2.QtGui import *
-	from PySide2.QtWidgets import *
-	psVersion = 2
-except:
-	from PySide.QtCore import *
-	from PySide.QtGui import *
-	psVersion = 1
+    from PySide2.QtCore import *
+    from PySide2.QtGui import *
+    from PySide2.QtWidgets import *
 
-import sys, os, datetime, traceback, time
-from functools import wraps
+    psVersion = 2
+except:
+    from PySide.QtCore import *
+    from PySide.QtGui import *
+
+    psVersion = 1
 
 if sys.version[0] == "3":
-	from configparser import ConfigParser
-	pVersion = 3
+    pVersion = 3
 else:
-	from ConfigParser import ConfigParser
-	pVersion = 2
+    pVersion = 2
 
 for i in ["DependencyViewer_ui", "DependencyViewer_ui_ps2"]:
-	try:
-		del sys.modules[i]
-	except:
-		pass
+    try:
+        del sys.modules[i]
+    except:
+        pass
 
 if psVersion == 1:
-	import DependencyViewer_ui
+    import DependencyViewer_ui
 else:
-	import DependencyViewer_ui_ps2 as DependencyViewer_ui
+    import DependencyViewer_ui_ps2 as DependencyViewer_ui
+
+from PrismUtils.Decorators import err_catcher
 
 
 class DependencyViewer(QDialog, DependencyViewer_ui.Ui_dlg_DependencyViewer):
-	def __init__(self, core, depRoot):
-		QDialog.__init__(self)
-		self.setupUi(self)
+    def __init__(self, core, depRoot):
+        QDialog.__init__(self)
+        self.setupUi(self)
 
-		self.core = core
-		self.core.parentWindow(self)
+        self.core = core
+        self.core.parentWindow(self)
 
-		if os.path.basename(depRoot) == "versioninfo.ini":
-			rootName = self.core.getConfig(cat="information", param="version", configPath=depRoot)
-		else:
-			rootName = self.core.getConfig(cat="information", param="filename", configPath=depRoot)
+        if os.path.basename(depRoot).startswith("versioninfo"):
+            rootName = self.core.getConfig(
+                cat="information", param="version", configPath=depRoot
+            )
+        else:
+            rootName = self.core.getConfig(
+                cat="information", param="filename", configPath=depRoot
+            )
 
-		self.l_root.setText(rootName)
+        self.l_root.setText(rootName)
 
-		self.tw_dependencies.setHeaderLabels(["Name", "", "Type", "Date", "Path"])
+        self.tw_dependencies.setHeaderLabels(["Name", "", "Type", "Date", "Path"])
 
-		if psVersion == 1:
-			self.tw_dependencies.header().setResizeMode(1,QHeaderView.Fixed)
-		else:
-			self.tw_dependencies.header().setSectionResizeMode(1,QHeaderView.Fixed)
+        if psVersion == 1:
+            self.tw_dependencies.header().setResizeMode(1, QHeaderView.Fixed)
+        else:
+            self.tw_dependencies.header().setSectionResizeMode(1, QHeaderView.Fixed)
 
-		self.dependencies = {}
-		self.depRoot = depRoot
+        self.dependencies = {}
+        self.depRoot = depRoot
 
-		self.connectEvents()
-		self.updateDependencies("0", depRoot)
+        self.connectEvents()
+        self.updateDependencies("0", depRoot)
 
-		self.tw_dependencies.setColumnWidth(0, 400)
-		self.tw_dependencies.setColumnWidth(1, 10)
-		self.tw_dependencies.setColumnWidth(2, 100)
-		self.tw_dependencies.setColumnWidth(3, 150)
-		self.tw_dependencies.resizeColumnToContents(4)
+        self.tw_dependencies.setColumnWidth(0, 400)
+        self.tw_dependencies.setColumnWidth(1, 10)
+        self.tw_dependencies.setColumnWidth(2, 100)
+        self.tw_dependencies.setColumnWidth(3, 150)
+        self.tw_dependencies.resizeColumnToContents(4)
 
-		self.core.callback(name="onDependencyViewerOpen", types=["curApp", "custom"], args=[self])
+        self.core.callback(
+            name="onDependencyViewerOpen", types=["curApp", "custom"], args=[self]
+        )
 
+    @err_catcher(name=__name__)
+    def connectEvents(self):
+        self.e_search.textChanged.connect(self.filterDeps)
+        self.tw_dependencies.mouseClickEvent = self.tw_dependencies.mouseReleaseEvent
+        self.tw_dependencies.mouseReleaseEvent = lambda x: self.mouseClickEvent(
+            x, "deps"
+        )
+        self.tw_dependencies.customContextMenuRequested.connect(
+            lambda x: self.rclList("deps", x)
+        )
 
-	def err_decorator(func):
-		@wraps(func)
-		def func_wrapper(*args, **kwargs):
-			try:
-				return func(*args, **kwargs)
-			except Exception as e:
-				exc_type, exc_obj, exc_tb = sys.exc_info()
-				erStr = ("%s ERROR - DependencyViewer %s:\n%s\n\n%s" % (time.strftime("%d/%m/%y %X"), args[0].core.version, ''.join(traceback.format_stack()), traceback.format_exc()))
-				args[0].core.writeErrorLog(erStr)
+    @err_catcher(name=__name__)
+    def mouseClickEvent(self, event, uielement):
+        if QEvent != None:
+            if event.type() == QEvent.MouseButtonRelease:
+                if event.button() == Qt.LeftButton:
+                    if uielement == "deps":
+                        self.tw_dependencies.mouseClickEvent(event)
+                        index = self.tw_dependencies.indexAt(event.pos())
+                        if index.data() == None:
+                            self.tw_dependencies.setCurrentIndex(
+                                self.tw_dependencies.model().createIndex(-1, 0)
+                            )
 
-		return func_wrapper
+    @err_catcher(name=__name__)
+    def rclList(self, listType, pos):
+        rcmenu = QMenu(self)
 
+        if listType == "deps":
+            lw = self.tw_dependencies
+        else:
+            return
 
-	@err_decorator
-	def connectEvents(self):
-		self.e_search.textChanged.connect(self.filterDeps)
-		self.tw_dependencies.mouseClickEvent = self.tw_dependencies.mouseReleaseEvent
-		self.tw_dependencies.mouseReleaseEvent = lambda x: self.mouseClickEvent(x,"deps")
-		self.tw_dependencies.customContextMenuRequested.connect(lambda x: self.rclList("deps",x))
+        iname = lw.indexAt(pos).data()
 
-	@err_decorator
-	def mouseClickEvent(self, event, uielement):
-		if QEvent != None:
-			if event.type() == QEvent.MouseButtonRelease:
-				if event.button() == Qt.LeftButton:
-					if uielement == "deps":
-						self.tw_dependencies.mouseClickEvent(event)
-						index = self.tw_dependencies.indexAt(event.pos())
-						if index.data() == None:
-							self.tw_dependencies.setCurrentIndex(self.tw_dependencies.model().createIndex(-1,0))
+        if iname is None:
+            return
 
+        dirPath = lw.model().index(lw.indexAt(pos).row(), 4).data()
 
-	@err_decorator
-	def rclList(self, listType, pos):
-		rcmenu = QMenu()
+        openex = QAction("Open in Explorer", self)
+        openex.triggered.connect(lambda: self.core.openFolder(dirPath))
+        rcmenu.addAction(openex)
+        copAct = QAction("Copy path", self)
+        copAct.triggered.connect(lambda: self.core.copyToClipboard(dirPath))
+        rcmenu.addAction(copAct)
 
-		if listType == "deps":
-			lw = self.tw_dependencies
-		else:
-			return
+        if rcmenu.isEmpty():
+            return False
 
-		iname = lw.indexAt(pos).data()
+        rcmenu.exec_(QCursor.pos())
 
-		if iname is None:
-			return
+    @err_catcher(name=__name__)
+    def updateDependencies(self, depID, versionInfo):
+        source = self.core.getConfig(
+            cat="information", param="source scene", configPath=versionInfo
+        )
+        deps = self.core.getConfig(
+            cat="information", param="Dependencies", configPath=versionInfo
+        ) or []
+        extFiles = self.core.getConfig(
+            cat="information", param="External files", configPath=versionInfo
+        ) or []
 
-		dirPath = lw.model().index(lw.indexAt(pos).row(), 4).data()
+        if source is not None:
+            deps.append(source)
 
-		openex = QAction("Open in Explorer", self)
-		openex.triggered.connect(lambda: self.core.openFolder(dirPath))
-		rcmenu.addAction(openex)
-		copAct = QAction("Copy path", self)
-		copAct.triggered.connect(lambda: self.core.copyToClipboard(dirPath))
-		rcmenu.addAction(copAct)
+        if depID == "0":
+            depItem = self.tw_dependencies.invisibleRootItem()
+        else:
+            depItem = self.dependencies[depID][1]
 
-		if rcmenu.isEmpty():
-			return False
+        for i in deps:
+            if pVersion == 2:
+                existText = unicode("█", "utf-8")
+            else:
+                existText = "█"
 
-		self.core.appPlugin.setRCStyle(self, rcmenu)
+            depPath = i
 
-		rcmenu.exec_(QCursor.pos())
+            if not os.path.exists(i):
+                depDir = os.path.dirname(i)
+                if os.path.exists(depDir) and len(os.listdir(depDir)) > 0:
+                    depPath = depDir
 
+            if os.path.exists(depPath):
+                cdate = datetime.datetime.fromtimestamp(os.path.getmtime(depPath))
+                cdate = cdate.replace(microsecond=0)
+                date = cdate.strftime("%d.%m.%y,  %X")
+                existColor = QColor(0, 255, 0)
+            else:
+                date = ""
+                existColor = QColor(255, 0, 0)
 
-	@err_decorator
-	def updateDependencies(self, depID, versionInfo):
-		source = self.core.getConfig(cat="information", param="source scene", configPath=versionInfo)
-		deps = self.core.getConfig(cat="information", param="dependencies", configPath=versionInfo)
-		extFiles = self.core.getConfig(cat="information", param="external files", configPath=versionInfo)
+            if i == source:
+                dType = "Source Scene"
+            else:
+                dType = "Export"
 
-		try:
-			deps = eval(deps)
-			if source is not None:
-				deps.append(source)
+            item = QTreeWidgetItem(
+                [os.path.basename(i), existText, dType, date, i.replace("\\", "/")]
+            )
 
-			extFiles = eval(extFiles)
-		except:
-			QMessageBox.warning(self.core.messageParent, "Warning", "Could not read dependencies from file:\n\n%s" % versionInfo)
-			deps = []
-			extFiles = []
+            item.setForeground(1, existColor)
 
-		if depID == "0":
-			depItem = self.tw_dependencies.invisibleRootItem()
-		else:
-			depItem = self.dependencies[depID][1]
+            depItem.addChild(item)
+            curID = str(len(self.dependencies) + 1)
 
-		for i in deps:
-			if pVersion == 2:
-				existText = unicode("█", "utf-8")
-			else:
-				existText = "█"
+            self.dependencies[curID] = [i, item, depID]
 
-			depPath = i
+            iFont = item.font(0)
+            iFont.setBold(True)
+            item.setFont(0, iFont)
 
-			if not os.path.exists(i):
-				depDir = os.path.dirname(i)
-				if os.path.exists(depDir) and len(os.listdir(depDir)) > 0:
-					depPath = depDir
+            depInfo = os.path.join(os.path.dirname(i), "versioninfo.yml")
+            self.core.configs.findDeprecatedConfig(depInfo)
+            if not os.path.exists(depInfo):
+                depInfo = os.path.join(
+                    os.path.dirname(os.path.dirname(i)), "versioninfo.yml"
+                )
+                self.core.configs.findDeprecatedConfig(depInfo)
 
-			if os.path.exists(depPath):
-				cdate = datetime.datetime.fromtimestamp(os.path.getmtime(depPath))
-				cdate = cdate.replace(microsecond = 0)
-				date = cdate.strftime("%d.%m.%y,  %X")
-				existColor = QColor(0,255,0)
-			else:
-				date = ""
-				existColor = QColor(255,0,0)
+            if os.path.exists(depInfo):
+                self.updateDependencies(curID, depInfo)
 
-			if i == source:
-				dType = "Source Scene"
-			else:
-				dType = "Export"
+        for i in extFiles:
+            if i in deps:
+                continue
 
-			item = QTreeWidgetItem([os.path.basename(i), existText, dType, date, i.replace("\\", "/")])
+            if pVersion == 2:
+                existText = unicode("█", "utf-8")
+            else:
+                existText = "█"
 
-			item.setForeground(1, existColor)
+            if os.path.exists(i):
+                cdate = datetime.datetime.fromtimestamp(os.path.getmtime(i))
+                cdate = cdate.replace(microsecond=0)
+                date = cdate.strftime("%d.%m.%y,  %X")
+                existColor = QColor(0, 255, 0)
+            else:
+                date = ""
+                existColor = QColor(255, 0, 0)
 
-			depItem.addChild(item)
-			curID = str(len(self.dependencies)+1)
+            item = QTreeWidgetItem(
+                [os.path.basename(i), existText, "File", date, i.replace("\\", "/")]
+            )
 
-			self.dependencies[curID] = [i, item, depID]
+            item.setForeground(1, existColor)
 
-			iFont = item.font(0)
-			iFont.setBold(True)
-			item.setFont(0, iFont)
+            depItem.addChild(item)
 
-			depInfo = os.path.join(os.path.dirname(i), "versioninfo.ini")
-			if not os.path.exists(depInfo):
-				depInfo = os.path.join(os.path.dirname(os.path.dirname(i)), "versioninfo.ini")
+            curID = str(len(self.dependencies) + 1)
+            self.dependencies[curID] = [i, item, depID]
 
-			if os.path.exists(depInfo):
-				self.updateDependencies(curID, depInfo)
+    @err_catcher(name=__name__)
+    def filterDeps(self, filterStr):
+        self.clearItem(self.tw_dependencies.invisibleRootItem())
 
-		for i in extFiles:
-			if i in deps:
-				continue
+        if filterStr == "":
+            self.dependencies = {}
+            self.updateDependencies("0", self.depRoot)
+        else:
+            for i in self.dependencies:
+                if filterStr.lower() in self.dependencies[i][0].lower():
+                    depID = i
+                    while depID != "0":
+                        parID = self.dependencies[depID][2]
+                        if parID == "0":
+                            self.tw_dependencies.invisibleRootItem().addChild(
+                                self.dependencies[depID][1]
+                            )
+                        else:
+                            self.dependencies[parID][1].addChild(
+                                self.dependencies[depID][1]
+                            )
+                        depID = parID
 
-			if pVersion == 2:
-				existText = unicode("█", "utf-8")
-			else:
-				existText = "█"
+            self.tw_dependencies.expandAll()
 
-			if os.path.exists(i):
-				cdate = datetime.datetime.fromtimestamp(os.path.getmtime(i))
-				cdate = cdate.replace(microsecond = 0)
-				date = cdate.strftime("%d.%m.%y,  %X")
-				existColor = QColor(0,255,0)
-			else:
-				date = ""
-				existColor = QColor(255,0,0)
-
-			item = QTreeWidgetItem([os.path.basename(i), existText, "File", date, i.replace("\\", "/")])
-
-			item.setForeground(1, existColor)
-			
-			depItem.addChild(item)
-
-			curID = str(len(self.dependencies)+1)
-			self.dependencies[curID] = [i, item, depID]
-
-
-
-	@err_decorator
-	def filterDeps(self, filterStr):
-		self.clearItem(self.tw_dependencies.invisibleRootItem())
-
-		if filterStr == "":
-			self.dependencies = {}
-			self.updateDependencies("0", self.depRoot)
-		else:
-			for i in self.dependencies:
-				if filterStr.lower() in self.dependencies[i][0].lower():
-					depID = i
-					while depID != "0":
-						parID = self.dependencies[depID][2]
-						if parID == "0":
-							self.tw_dependencies.invisibleRootItem().addChild(self.dependencies[depID][1])
-						else:
-							self.dependencies[parID][1].addChild(self.dependencies[depID][1])
-						depID = parID
-
-			self.tw_dependencies.expandAll()
-
-
-	@err_decorator
-	def clearItem(self, item):
-		for i in range(item.childCount()):
-			self.clearItem(item.child(0))
-			item.takeChild(0)
+    @err_catcher(name=__name__)
+    def clearItem(self, item):
+        for i in range(item.childCount()):
+            self.clearItem(item.child(0))
+            item.takeChild(0)

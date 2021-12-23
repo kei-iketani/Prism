@@ -11,7 +11,7 @@
 ####################################################
 #
 #
-# Copyright (C) 2016-2019 Richard Frangenberg
+# Copyright (C) 2016-2020 Richard Frangenberg
 #
 # Licensed under GNU GPL-3.0-or-later
 #
@@ -31,11 +31,15 @@
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
 
-
 from Prism_Standalone_Variables import Prism_Standalone_Variables
-from Prism_Standalone_externalAccess_Functions import Prism_Standalone_externalAccess_Functions
+from Prism_Standalone_externalAccess_Functions import (
+    Prism_Standalone_externalAccess_Functions,
+)
 
-class Prism_Standalone_unloaded(Prism_Standalone_Variables, Prism_Standalone_externalAccess_Functions):
-	def __init__(self, core):
-		Prism_Standalone_Variables.__init__(self, core, self)
-		Prism_Standalone_externalAccess_Functions.__init__(self, core, self)
+
+class Prism_Standalone_unloaded(
+    Prism_Standalone_Variables, Prism_Standalone_externalAccess_Functions
+):
+    def __init__(self, core):
+        Prism_Standalone_Variables.__init__(self, core, self)
+        Prism_Standalone_externalAccess_Functions.__init__(self, core, self)

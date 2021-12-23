@@ -11,7 +11,7 @@
 ####################################################
 #
 #
-# Copyright (C) 2016-2019 Richard Frangenberg
+# Copyright (C) 2016-2020 Richard Frangenberg
 #
 # Licensed under GNU GPL-3.0-or-later
 #
@@ -31,16 +31,20 @@
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
 
-
 from Prism_Nuke_Variables import Prism_Nuke_Variables
 from Prism_Nuke_externalAccess_Functions import Prism_Nuke_externalAccess_Functions
 from Prism_Nuke_Functions import Prism_Nuke_Functions
 from Prism_Nuke_Integration import Prism_Nuke_Integration
 
 
-class Prism_Plugin_Nuke(Prism_Nuke_Variables, Prism_Nuke_externalAccess_Functions, Prism_Nuke_Functions, Prism_Nuke_Integration):
-	def __init__(self, core):
-		Prism_Nuke_Variables.__init__(self, core, self)
-		Prism_Nuke_externalAccess_Functions.__init__(self, core, self)
-		Prism_Nuke_Functions.__init__(self, core, self)
-		Prism_Nuke_Integration.__init__(self, core, self)
+class Prism_Plugin_Nuke(
+    Prism_Nuke_Variables,
+    Prism_Nuke_externalAccess_Functions,
+    Prism_Nuke_Functions,
+    Prism_Nuke_Integration,
+):
+    def __init__(self, core):
+        Prism_Nuke_Variables.__init__(self, core, self)
+        Prism_Nuke_externalAccess_Functions.__init__(self, core, self)
+        Prism_Nuke_Functions.__init__(self, core, self)
+        Prism_Nuke_Integration.__init__(self, core, self)

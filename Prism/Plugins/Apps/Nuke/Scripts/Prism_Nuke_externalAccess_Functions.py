@@ -11,7 +11,7 @@
 ####################################################
 #
 #
-# Copyright (C) 2016-2019 Richard Frangenberg
+# Copyright (C) 2016-2020 Richard Frangenberg
 #
 # Licensed under GNU GPL-3.0-or-later
 #
@@ -31,123 +31,99 @@
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
 
-
-import os, sys
-import traceback, time, platform, subprocess
-from functools import wraps
+import os
+import sys
+import platform
+import subprocess
 
 try:
-	from PySide2.QtCore import *
-	from PySide2.QtGui import *
-	from PySide2.QtWidgets import *
-	psVersion = 2
+    from PySide2.QtCore import *
+    from PySide2.QtGui import *
+    from PySide2.QtWidgets import *
 except:
-	from PySide.QtCore import *
-	from PySide.QtGui import *
-	psVersion = 1
-
+    from PySide.QtCore import *
+    from PySide.QtGui import *
 
 if platform.system() == "Windows":
-	if sys.version[0] == "3":
-		import winreg as _winreg
-	else:
-		import _winreg
+    if sys.version[0] == "3":
+        import winreg as _winreg
+    else:
+        import _winreg
+
+from PrismUtils.Decorators import err_catcher_plugin as err_catcher
 
 
 class Prism_Nuke_externalAccess_Functions(object):
-	def __init__(self, core, plugin):
-		self.core = core
-		self.plugin = plugin
+    def __init__(self, core, plugin):
+        self.core = core
+        self.plugin = plugin
 
+    @err_catcher(name=__name__)
+    def prismSettings_loadUI(self, origin, tab):
+        origin.chb_nukeX = QCheckBox("Use NukeX instead of Nuke")
+        tab.layout().addWidget(origin.chb_nukeX)
 
-	def err_decorator(func):
-		@wraps(func)
-		def func_wrapper(*args, **kwargs):
-			exc_info = sys.exc_info()
-			try:
-				return func(*args, **kwargs)
-			except Exception as e:
-				exc_type, exc_obj, exc_tb = sys.exc_info()
-				erStr = ("%s ERROR - Prism_Plugin_Nuke_ext - Core: %s - Plugin: %s:\n%s\n\n%s" % (time.strftime("%d/%m/%y %X"), args[0].core.version, args[0].plugin.version, ''.join(traceback.format_stack()), traceback.format_exc()))
-				args[0].core.writeErrorLog(erStr)
+    @err_catcher(name=__name__)
+    def prismSettings_saveSettings(self, origin, settings):
+        if "nuke" not in settings:
+            settings["nuke"] = {}
 
-		return func_wrapper
+        settings["nuke"]["usenukex"] = origin.chb_nukeX.isChecked()
 
+    @err_catcher(name=__name__)
+    def prismSettings_loadSettings(self, origin, settings):
+        if "nuke" in settings:
+            if "usenukex" in settings["nuke"]:
+                origin.chb_nukeX.setChecked(settings["nuke"]["usenukex"])
 
-	@err_decorator
-	def prismSettings_loadUI(self, origin, tab):
-		origin.chb_nukeX = QCheckBox("Use NukeX instead of Nuke")
-		tab.layout().addWidget(origin.chb_nukeX)
+    @err_catcher(name=__name__)
+    def getAutobackPath(self, origin, tab):
+        autobackpath = ""
 
+        fileStr = "Nuke Script ("
+        for i in self.sceneFormats:
+            fileStr += "*%s " % i
 
-	@err_decorator
-	def prismSettings_saveSettings(self, origin):
-		saveData = []
-		saveData.append(['nuke', 'usenukex', str(origin.chb_nukeX.isChecked())])
+        fileStr += ")"
 
-		return saveData
+        return autobackpath, fileStr
 
+    @err_catcher(name=__name__)
+    def customizeExecutable(self, origin, appPath, filepath):
+        fileStarted = False
+        if self.core.getConfig("nuke", "usenukex"):
+            if appPath == "":
+                if not hasattr(self, "nukePath"):
+                    self.getNukePath(origin)
 
-	@err_decorator
-	def prismSettings_loadSettings(self, origin):
-		loadData = {}
-		loadFunctions = {}
+                if self.nukePath is not None and os.path.exists(self.nukePath):
+                    appPath = self.nukePath
+                else:
+                    QMessageBox.warning(
+                        self.core.messageParent,
+                        "Warning",
+                        "Nuke executable doesn't exist:\n\n%s" % self.nukePath,
+                    )
 
-		loadData["nuke_usenukex"] = ['nuke', 'usenukex', 'bool']
-		loadFunctions["nuke_usenukex"] = lambda x: origin.chb_nukeX.setChecked(x)
+            if appPath is not None and appPath != "":
+                subprocess.Popen([appPath, "--nukex", self.core.fixPath(filepath)])
+                fileStarted = True
 
-		return loadData, loadFunctions
+        return fileStarted
 
+    @err_catcher(name=__name__)
+    def getNukePath(self, origin):
+        try:
+            ext = ".nk"
+            class_root = _winreg.QueryValue(_winreg.HKEY_CLASSES_ROOT, ext)
 
-	@err_decorator
-	def getAutobackPath(self, origin, tab):
-		autobackpath = ""
+            with _winreg.OpenKey(
+                _winreg.HKEY_CLASSES_ROOT, r"%s\\shell\\open\\command" % class_root
+            ) as key:
+                command = _winreg.QueryValueEx(key, "")[0]
 
-		if tab == "a":
-			autobackpath = os.path.join(origin.tw_aHierarchy.currentItem().text(1), "Scenefiles", origin.lw_aPipeline.currentItem().text())
-		elif tab == "sf":
-			autobackpath = os.path.join(origin.sBasePath, origin.cursShots, "Scenefiles", origin.cursStep, origin.cursCat)
+            command = command.rsplit(" ", 1)[0][1:-1]
 
-		fileStr = "Nuke Script ("
-		for i in self.sceneFormats:
-			fileStr += "*%s " % i
-
-		fileStr += ")"
-
-		return autobackpath, fileStr
-
-
-	@err_decorator
-	def customizeExecutable(self, origin, appPath, filepath):
-		fileStarted = False
-		if self.core.getConfig("nuke", "usenukex", ptype="bool"):
-			if appPath == "":
-				if not hasattr(self, "nukePath"):
-					self.getNukePath(origin)
-
-				if self.nukePath is not None and os.path.exists(self.nukePath):
-					appPath = self.nukePath
-				else:
-					QMessageBox.warning(self.core.messageParent, "Warning", "Nuke executable doesn't exist:\n\n%s" % self.nukePath)
-
-			if appPath is not None and appPath != "":
-				subprocess.Popen([appPath, "--nukex", self.core.fixPath(filepath)])
-				fileStarted = True
-
-		return fileStarted
-
-
-	@err_decorator
-	def getNukePath(self, origin):
-		try:
-			ext = ".nk"
-			class_root = _winreg.QueryValue(_winreg.HKEY_CLASSES_ROOT, ext)
-
-			with _winreg.OpenKey(_winreg.HKEY_CLASSES_ROOT, r'%s\\shell\\open\\command' % class_root) as key:
-				command = _winreg.QueryValueEx(key, '')[0]
-
-			command = command.rsplit(" ", 1)[0][1:-1]
-
-			self.nukePath = command
-		except:
-			self.nukePath = None
+            self.nukePath = command
+        except:
+            self.nukePath = None
